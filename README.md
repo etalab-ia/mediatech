@@ -63,13 +63,21 @@ Exemples de commandes :
   ```bash
   bibliotheque --help
   ```
-- Télécharger les fichiers :  
-  ```bash
-  bibliotheque download_files
-  ```
 - Créer les tables PostgreSQL:  
   ```bash
   bibliotheque create_tables --model BAAI/bge-m3
+  ```
+- Télécharger tous les fichiers répertoriés dans [`data_config.json`](config/data_config.json):  
+  ```bash
+  bibliotheque download_files --all
+  ```
+- Télécharger les fichiers de la source `service_public` :  
+  ```bash
+  bibliotheque download_files --source service_public
+  ```
+- Télécharger et traiter tous les fichiers répertoriés dans [`data_config.json`](config/data_config.json):  
+  ```bash
+  bibliotheque download_and_process_files --all --model BAAI/bge-m3
   ```
 - Traiter toutes les données :  
   ```bash
@@ -112,15 +120,16 @@ Le script [`update.sh`](update.sh) permet d'executer l'ensemble du pipeline de t
 Pour l'exécuter, lancez la commande suivante depuis la racine du projet :
 
 ```bash
-source update.sh
+./scripts/update.sh
 ```
 
 Ce script va :
 - Attendre que la base PostgreSQL soit disponible,
-- Télécharger les fichiers publics,
-- Créer ou mettre à jour les tables nécessaires dans la base,
+- Créer ou mettre à jour les tables nécessaires dans la base PostgreSQL,
+- Télécharger les fichiers publics répertoriés dans [`data_config.json`](config/data_config.json),
 - Traiter et vectoriser les données,
-- Exporter les tables au format Parquet.
+- Exporter les tables au format Parquet,
+- Téléverser les fichiers Parquet sur [Hugging Face](https://huggingface.co/AgentPublic).
 
 ### Structure du projet
 
@@ -136,3 +145,5 @@ Ce script va :
   - **[`scripts/periodic_update.sh`](scripts/periodic_update.sh)** : Script shell pour automatiser l'ensemble de la pipeline sur la machine virtuelle. Ce script est executé periodiquement par [`cron_config.txt`](cron_config.txt).
   - **[`scripts/backup.sh`](scripts/backup.sh)** : Script shell pour sauvegarder le volume de la base Pgvector (PostgreSQL) ainsi que certains fichiers de configurations. Ce script est executé periodiquement par [`cron_config.txt`](cron_config.txt).
   - **[`scripts/restore.sh`](scripts/restore.sh)** : Script shell pour restaurer le volume de la base Pgvector (PostgreSQL) ainsi que certains fichiers de configurations si nécessaire.
+  - **[`scripts/deployment_packages.sh`](scripts/deployment_packages.sh)** : Script shell pour installer automatiquement les paquets système nécessaires au projet (via apt) et configurer les permissions Docker. Il lit la liste des paquets à installer dans [`config/requirements-apt.txt`](config/requirements-apt.txt), installe ceux qui manquent, et execute des commandes administrateurs si besoin. À exécuter après le clonage du projet ou lors d'une mise à jour de l'environnement système.
+  - **[`scripts/delete_old_logs.sh`](scripts/delete_old_logs.sh)** : Script shell pour supprimer automatiquement les anciens fichiers de logs du dossier [`logs/`](logs/). Par défaut, il conserve les logs des 14 derniers jours et supprime les plus anciens. Ce script peut être exécuté manuellement ou programmé via cron pour garder le dossier de logs propre.

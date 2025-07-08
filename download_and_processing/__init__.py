@@ -1,2 +1,2 @@
-from .download_files import download_all_files, download_and_process_files, download_and_process_all_files
+from .download_files import download_and_optionally_process_files, download_and_optionally_process_all_files
 from .files_processing import process_data, process_all_data
