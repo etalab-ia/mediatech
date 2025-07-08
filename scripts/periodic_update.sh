@@ -11,7 +11,8 @@ set -e  # Stops the script on any error
 # Configuration
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$PROJECT_DIR/.venv"
-LOG_FILE="$PROJECT_DIR/logs/periodic_update.log"
+DATE=$(date +%Y%m%d_%H%M%S)
+LOG_FILE="$PROJECT_DIR/logs/periodic_update_$DATE.log"
 
 # Creating logs directory if it doesn't exist
 mkdir -p "$PROJECT_DIR/logs"

@@ -1,3 +1,5 @@
+PROJECT_DIR=your/repo/path
+
 # Executing periodic update
 # Every Friday at 7 pm
 0 19 * * 5 $PROJECT_DIR/scripts/periodic_update.sh
@@ -5,3 +7,7 @@
 # Executing periodic backup of the Pgvector (PostgreSQL) volume and some configuration files
 # Every Sunday at 8 am
 0 8 * * 0 $PROJECT_DIR/scripts/backup.sh
+
+# Executing the old logs deleting script periodically
+# Every Sunday at 7 am
+0 7 * * 0 $PROJECT_DIR/scripts/delete_old_logs.sh

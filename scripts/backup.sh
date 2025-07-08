@@ -9,9 +9,9 @@ CONFIG_BACKUP_DIR="$PROJECT_DIR/backups/config"
 CONTAINER_NAME="pgvector_container"
 DB_NAME="${POSTGRES_DB}"
 DB_USER="${POSTGRES_USER}"
-RETENTION_DAYS=7
+RETENTION_DAYS=7 # Number of days to retain logs
 DATE=$(date +%Y%m%d_%H%M%S)
-LOG_FILE="$PROJECT_DIR/logs/backup.log"
+LOG_FILE="$PROJECT_DIR/logs/backup_$DATE.log"
 
 # Creating logs directory if it doesn't exist
 mkdir -p "$PROJECT_DIR/logs"

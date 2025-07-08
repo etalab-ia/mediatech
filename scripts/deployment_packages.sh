@@ -2,8 +2,10 @@
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_FILE="$PROJECT_DIR/logs/deployment_packages.log"
+DATE=$(date +%Y%m%d_%H%M%S)
+LOG_FILE="$PROJECT_DIR/logs/deployment_packages_$DATE.log"
 APT_REQUIREMENTS_FILE="$PROJECT_DIR/config/requirements-apt.txt"
+
 # Creating logs directory if it doesn't exist
 mkdir -p "$PROJECT_DIR/logs"
 

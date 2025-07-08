@@ -11,9 +11,6 @@ config/data_history.json
 test.*
 test/
 
-
-
-
 # Build artifacts
 build/
 dist/
