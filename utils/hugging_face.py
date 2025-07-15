@@ -155,7 +155,7 @@ class HuggingFace:
                                 return last_commit_date
                 except Exception as e:
                     # If all attempts fail, return a default date and log the error. MANUAL CHECK WILL BE NEEDED IN HF!
-                    logger.info(
+                    logger.warning(
                         f"Error : {e}\nRenaming the file based on the default error date : 01012999"
                     )
                     return "01012999"  # Default date if no upload date is found
@@ -179,7 +179,7 @@ class HuggingFace:
             dataset_name=dataset_name, hf_file_path=old_file_path
         )
         if old_file_date is None:
-            logger.error(
+            logger.warning(
                 f"Failed to retrieve the upload date for {old_file_path}. Cannot rename the old latest file."
             )
             return

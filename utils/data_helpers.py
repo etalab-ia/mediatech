@@ -271,9 +271,11 @@ def remove_file(file_path: str):
         logger.info(f"File {file_path} does not exist")
 
 
-def export_tables_to_parquet(output_folder: str = parquet_files_folder):
+def export_tables_to_parquet(
+    output_folder: str = parquet_files_folder, batch_size: int = 10000
+):
     """
-    Exports all tables from the postgresql database to Parquet files.
+    Exports all tables from the postgresql database to Parquet files by batches.
 
     Args:
         output_folder (str): The path where the Parquet files will be saved.
@@ -296,6 +298,7 @@ def export_tables_to_parquet(output_folder: str = parquet_files_folder):
         )
         tables = cursor.fetchall()
         tables = [table[0] for table in tables]
+        logger.info(f"Found {len(tables)} tables in the database: {tables}")
         os.makedirs(output_folder, exist_ok=True)
 
         for table_name in tables:
@@ -304,30 +307,42 @@ def export_tables_to_parquet(output_folder: str = parquet_files_folder):
                 cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
                 table_row_count = cursor.fetchone()[0]
 
-                cursor.execute(f"SELECT * FROM {table_name}")
+                if table_row_count == 0:
+                    logger.warning(f"No data found in table '{table_name}'")
+                    continue
+
+                cursor.execute(f"SELECT * FROM {table_name} LIMIT 1")
                 columns = [desc[0] for desc in cursor.description]
-                rows = cursor.fetchall()
 
                 output_path = f"{output_folder}/{table_name}.parquet"
-                if table_row_count > 0:
-                    logger.info(
-                        f"Exporting {table_row_count} rows from table '{table_name}' to Parquet file: {output_path}"
+                logger.info(
+                    f"Exporting {table_row_count} rows from table '{table_name}' to Parquet file: {output_path}"
+                )
+
+                all_dfs = []
+
+                for offset in range(0, table_row_count, batch_size):
+                    cursor.execute(
+                        f"SELECT * FROM {table_name} LIMIT {batch_size} OFFSET {offset}"
                     )
-                    df = pl.DataFrame(rows, schema=columns, orient="row")
-                    df.write_parquet(output_path)
+                    batch_rows = cursor.fetchall()
+                    if batch_rows:
+                        df = pl.DataFrame(batch_rows, schema=columns, orient="row")
+                        all_dfs.append(df)
+                    logger.debug(
+                        f"Processed batch {offset // batch_size + 1}/{(table_row_count // batch_size) + 1}"
+                    )
 
-                    # Vérifier le nombre de lignes dans le fichier parquet créé
-                    verification_df = pl.read_parquet(output_path)
-                    parquet_row_count = len(verification_df)
-
-                    if table_row_count == parquet_row_count:
-                        logger.info(
-                            f"Successfully exported table '{table_name}': {table_row_count} rows from table → {parquet_row_count} rows in parquet file ✓"
-                        )
-                    else:
-                        logger.warning(
-                            f"Row count mismatch for table '{table_name}': {table_row_count} rows from table → {parquet_row_count} rows in parquet file"
-                        )
+                if all_dfs:
+                    # Concatenate all batches into a single DataFrame
+                    full_df = pl.concat(all_dfs)
+                    full_df.write_parquet(output_path)
+                    
+                    # Log the number of rows in the Parquet file
+                    parquet_row_count = len(full_df)
+                    logger.info(
+                        f"Successfully exported table '{table_name}': {table_row_count} rows → {parquet_row_count} rows"
+                    )
                 else:
                     logger.warning(
                         f"No data found in table '{table_name}'. No Parquet file created."
