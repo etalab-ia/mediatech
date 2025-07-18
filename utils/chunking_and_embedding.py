@@ -287,11 +287,11 @@ def make_chunks_sheets(
     info = defaultdict(lambda: defaultdict(list))
     for data in sheets:
         texts = data["text"]
-        surtitre = data["surtitre"]
+        surtitle = data["surtitle"]
 
         if not texts:
             continue
-        if surtitre in ("Dossier", "Recherche guidée"):
+        if surtitle in ("Dossier", "Recherche guidée"):
             # TODO: can be used for cross-reference, see also <LienInterne>
             continue
 
@@ -300,7 +300,7 @@ def make_chunks_sheets(
         else:
             s = texts
 
-        info[surtitre]["len"].append(len(" ".join(s).split()))
+        info[surtitle]["len"].append(len(" ".join(s).split()))
         index = 0
         for natural_chunk in texts:
             if isinstance(natural_chunk, dict):
@@ -313,7 +313,7 @@ def make_chunks_sheets(
                     logger.warning("Warning: empty fragment")
                     continue
 
-                info[surtitre]["chunk_len"].append(len(fragment.split()))
+                info[surtitle]["chunk_len"].append(len(fragment.split()))
 
                 chunk = {
                     **data,
@@ -372,10 +372,10 @@ def make_chunks_sheets(
 def dole_cut_file_content(text: str):
     """
     Splits legal text into individual articles based on article numbering patterns.
-    
+
     Args:
         text (str): The legal document text to be split into articles.
-        
+
     Returns:
         list: A list of dictionaries containing 'article_number' and 'article_text' keys.
               Returns single item with None article_number if no articles found.
@@ -424,17 +424,18 @@ def dole_cut_file_content(text: str):
 def dole_cut_exp_memo(text: str, section: str) -> str:
     """
     Extract and parse legal document sections (introduction or articles) from French legal text.
-    
+
     Args:
         text (str): The legal document text to parse
         section (str): Section type to extract - "introduction" or "articles"
-    
+
     Returns:
         str: Introduction text if section="introduction"
         list: List of article dictionaries if section="articles", each containing
               article_number, article_synthesis, and title_content
         str: Empty string if text is empty or no content found
     """
+
     def get_number_of_articles(text: str) -> int:
         # Finding all occurrences of "Article n" or "Article n-er"
         pattern = re.compile(r"(?:L['’] ?)?[Aa]rticle\s+(?:\d{1,2})(?!-)(?:er)?\b")

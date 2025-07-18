@@ -460,7 +460,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                             nota = None
 
                         contenu = root.find(".//BLOC_TEXTUEL/CONTENU")
-                        texte = []
+                        text = []
 
                         if contenu is not None:
                             # Extract all text
@@ -476,25 +476,25 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                             content = "\n".join(
                                 cleaned_lines
                             )  # Rejoin the cleaned lines with a newline
-                            texte.append(content)
-                        texte = "\n".join(texte)
+                            text.append(content)
+                        text = "\n".join(text)
 
                         chunks = make_chunks(
-                            text=texte, chunk_size=5000, chunk_overlap=250
+                            text=text, chunk_size=5000, chunk_overlap=250
                         )
                         data_to_insert = []
 
-                        for chunk_number, text in enumerate(chunks):
+                        for chunk_number, text_content in enumerate(chunks):
                             try:
                                 chunk_text = f"{full_title}"
                                 if number:
                                     chunk_text += f" - Article {number}"
                                 # Adding subtitles only if the text is long enough
-                                if subtitles and len(text) > 200:
+                                if subtitles and len(text_content) > 200:
                                     context = format_subtitles(subtitles=subtitles)
-                                    if context and len(context) < len(text):
+                                    if context and len(context) < len(text_content):
                                         chunk_text += f"\n{context}"  # Augment the chunk text with subtitles concepts
-                                chunk_text += f"\n{text}"
+                                chunk_text += f"\n{text_content}"
 
                                 embeddings = generate_embeddings_with_retry(
                                     data=chunk_text, attempts=5, model=model
@@ -527,7 +527,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                 )
                                 raise
 
-                        # Insérer tous les chunks en une fois
+                        # Inserting all chunks at once
                         if data_to_insert:
                             insert_data(data=data_to_insert, table_name=table_name)
 
@@ -542,21 +542,21 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                 try:
                     tree = ET.parse(file_path)
                     root = tree.getroot()
-                    etat = root.find(".//ETAT_JURIDIQUE").text
+                    status = root.find(".//ETAT_JURIDIQUE").text
 
-                    if etat in ["VIGUEUR"]:
+                    if status in ["VIGUEUR"]:
                         cid = root.find(".//ID").text
                         nature = root.find(".//NATURE").text
                         nature_delib = root.find(".//NATURE_DELIB").text
-                        titre = root.find(".//TITRE").text
-                        titre_complet = root.find(".//TITREFULL").text
-                        numero = root.find(".//NUMERO").text
+                        title = root.find(".//TITRE").text
+                        full_title = root.find(".//TITREFULL").text
+                        number = root.find(".//NUMERO").text
                         date = datetime.strptime(
                             root.find(".//DATE_TEXTE").text, "%Y-%m-%d"
                         ).strftime("%Y-%m-%d")
 
                         contenu = root.find(".//BLOC_TEXTUEL/CONTENU")
-                        texte = []
+                        text = []
 
                         if contenu is not None:
                             # Extract all text
@@ -569,19 +569,22 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                             cleaned_lines = [
                                 line for line in lines if line
                             ]  # Remove empty lines and extra spaces
+
                             content = "\n".join(
                                 cleaned_lines
                             )  # Rejoin the cleaned lines with a newline
-                            texte.append(content)
-                        texte = "\n".join(texte)
+                            text.append(content)
+                        text = "\n".join(text)
 
                         chunks = make_chunks(
-                            text=texte, chunk_size=1500, chunk_overlap=200
+                            text=text, chunk_size=1500, chunk_overlap=200
                         )
                         data_to_insert = []
 
-                        for chunk_number, chunk_text in enumerate(chunks):
+                        for chunk_number, text_content in enumerate(chunks):
                             try:
+                                chunk_text = f"{title}\n{text_content}"
+
                                 embeddings = generate_embeddings_with_retry(
                                     data=chunk_text, attempts=5, model=model
                                 )[0]
@@ -593,11 +596,11 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                     cid,  # Original document ID
                                     chunk_number,  # Chunk number
                                     nature,
-                                    etat,
+                                    status,
                                     nature_delib,
-                                    titre,
-                                    titre_complet,
-                                    numero,
+                                    title,
+                                    full_title,
+                                    number,
                                     date,
                                     chunk_text,
                                     embeddings,
@@ -609,7 +612,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                 )
                                 raise
 
-                        # Insert all chunks at once
+                        # Inserting all chunks at once
                         if data_to_insert:
                             insert_data(data=data_to_insert, table_name=table_name)
 
@@ -627,15 +630,15 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
 
                     cid = root.find(".//ID").text
                     nature = root.find(".//NATURE").text
-                    titre = root.find(".//TITRE").text
-                    numero = root.find(".//NUMERO").text
+                    title = root.find(".//TITRE").text
+                    number = root.find(".//NUMERO").text
                     solution = root.find(".//SOLUTION").text
-                    date_decision = datetime.strptime(
+                    decision_date = datetime.strptime(
                         root.find(".//DATE_DEC").text, "%Y-%m-%d"
                     ).strftime("%Y-%m-%d")
                     contenu = root.find(".//BLOC_TEXTUEL//CONTENU")
 
-                    texte = []
+                    text = []
 
                     if contenu is not None:
                         # Extract all text
@@ -649,14 +652,16 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                         content = "\n".join(
                             cleaned_lines
                         )  # Rejoin the cleaned lines with a newline
-                        texte.append(content)
-                    texte = "\n".join(texte)
+                        text.append(content)
+                    text = "\n".join(text)
 
-                    chunks = make_chunks(text=texte, chunk_size=1500, chunk_overlap=200)
+                    chunks = make_chunks(text=text, chunk_size=1500, chunk_overlap=200)
                     data_to_insert = []
 
-                    for chunk_number, chunk_text in enumerate(chunks):
+                    for chunk_number, text_content in enumerate(chunks):
                         try:
+                            chunk_text = f"{title}\n{text_content}"
+
                             embeddings = generate_embeddings_with_retry(
                                 data=chunk_text, attempts=5, model=model
                             )[0]
@@ -669,9 +674,9 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                 chunk_number,  # Chunk number
                                 nature,
                                 solution,
-                                titre,
-                                numero,
-                                date_decision,
+                                title,
+                                number,
+                                decision_date,
                                 chunk_text,
                                 embeddings,
                             )
@@ -682,7 +687,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                             )
                             raise
 
-                    # Insert all chunks at once
+                    # Inserting all chunks at once
                     if data_to_insert:
                         insert_data(data=data_to_insert, table_name=table_name)
 
@@ -1068,7 +1073,7 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                 sid = document["sid"]
                 chunk_index = document["chunk_index"]
                 title = document["title"]
-                surtitre = document["surtitre"]
+                surtitle = document["surtitle"]
                 source = document["source"]
                 introduction = document["introduction"]
                 date = document["date"]
@@ -1082,7 +1087,7 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     sid,
                     chunk_index,
                     title,
-                    surtitre,
+                    surtitle,
                     source,
                     introduction,
                     date,
@@ -1108,7 +1113,7 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                 audience = document["audience"]
                 theme = document["theme"]
                 title = document["title"]
-                surtitre = document["surtitre"]
+                surtitle = document["surtitle"]
                 source = document["source"]
                 introduction = document["introduction"]
                 url = document["url"]
@@ -1125,7 +1130,7 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     audience,
                     theme,
                     title,
-                    surtitre,
+                    surtitle,
                     source,
                     introduction,
                     url,
@@ -1494,4 +1499,3 @@ def process_all_data(unprocessed_data_folder: str, model: str = "BAAI/bge-m3"):
     for directory in os.listdir(unprocessed_data_folder):
         base_folder = os.path.join(unprocessed_data_folder, directory)
         process_data(base_folder=base_folder, model=model)
-

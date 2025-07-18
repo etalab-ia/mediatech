@@ -157,7 +157,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             sid TEXT NOT NULL,
                             chunk_index INTEGER NOT NULL,
                             title TEXT,
-                            surtitre TEXT,
+                            surtitle TEXT,
                             source TEXT,
                             introduction TEXT,
                             date TEXT,
@@ -178,7 +178,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             audience TEXT,
                             theme TEXT,
                             title TEXT,
-                            surtitre TEXT,
+                            surtitle TEXT,
                             source TEXT,
                             introduction TEXT,
                             url TEXT,
@@ -199,11 +199,11 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             cid TEXT NOT NULL,
                             chunk_number INTEGER NOT NULL,
                             nature TEXT,
-                            etat TEXT,
+                            status TEXT,
                             nature_delib TEXT,
-                            titre TEXT,
-                            titre_complet TEXT,
-                            numero TEXT,
+                            title TEXT,
+                            full_title TEXT,
+                            number TEXT,
                             date TEXT,
                             chunk_text TEXT,
                             "embeddings_{model_name}" vector({embedding_size}),
@@ -219,9 +219,9 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             chunk_number INTEGER NOT NULL,
                             nature TEXT,
                             solution TEXT,
-                            titre TEXT,
-                            numero TEXT,
-                            date_decision TEXT,
+                            title TEXT,
+                            number TEXT,
+                            decision_date TEXT,
                             chunk_text TEXT,
                             "embeddings_{model_name}" vector({embedding_size}),
                             UNIQUE(chunk_id)
@@ -613,13 +613,13 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
 
         elif table_name.lower() == "travail_emploi":
             insert_query = f"""
-                INSERT INTO TRAVAIL_EMPLOI (chunk_id, sid, chunk_index, title, surtitre, source, introduction, date, url, context, text, chunk_text, "embeddings_{model_name}")
+                INSERT INTO TRAVAIL_EMPLOI (chunk_id, sid, chunk_index, title, surtitle, source, introduction, date, url, context, text, chunk_text, "embeddings_{model_name}")
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 sid = EXCLUDED.sid,
                 chunk_index = EXCLUDED.chunk_index,
                 title = EXCLUDED.title,
-                surtitre = EXCLUDED.surtitre,
+                surtitle = EXCLUDED.surtitle,
                 source = EXCLUDED.source,
                 introduction = EXCLUDED.introduction,
                 date = EXCLUDED.date,
@@ -631,7 +631,7 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "service_public":
             insert_query = f"""
-                INSERT INTO SERVICE_PUBLIC (chunk_id, sid, chunk_index, audience, theme, title, surtitre, source, introduction, url, related_questions, web_services, context, text, chunk_text, "embeddings_{model_name}")
+                INSERT INTO SERVICE_PUBLIC (chunk_id, sid, chunk_index, audience, theme, title, surtitle, source, introduction, url, related_questions, web_services, context, text, chunk_text, "embeddings_{model_name}")
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 sid = EXCLUDED.sid,
@@ -639,7 +639,7 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
                 audience = EXCLUDED.audience,
                 theme = EXCLUDED.theme,
                 title = EXCLUDED.title,
-                surtitre = EXCLUDED.surtitre,
+                surtitle = EXCLUDED.surtitle,
                 source = EXCLUDED.source,
                 introduction = EXCLUDED.introduction,
                 url = EXCLUDED.url,
@@ -652,33 +652,33 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "cnil":
             insert_query = f"""
-                INSERT INTO CNIL (chunk_id, cid, chunk_number, nature, etat, nature_delib, titre, titre_complet, numero, date, chunk_text, "embeddings_{model_name}")
+                INSERT INTO CNIL (chunk_id, cid, chunk_number, nature, status, nature_delib, title, full_title, number, date, chunk_text, "embeddings_{model_name}")
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 cid = EXCLUDED.cid,
                 chunk_number = EXCLUDED.chunk_number,
                 nature = EXCLUDED.nature,
-                etat = EXCLUDED.etat,
+                status = EXCLUDED.status,
                 nature_delib = EXCLUDED.nature_delib,
-                titre = EXCLUDED.titre,
-                titre_complet = EXCLUDED.titre_complet,
-                numero = EXCLUDED.numero,
+                title = EXCLUDED.title,
+                full_title = EXCLUDED.full_title,
+                number = EXCLUDED.number,
                 date = EXCLUDED.date,
                 chunk_text = EXCLUDED.chunk_text,
                 "embeddings_{model_name}" = EXCLUDED."embeddings_{model_name}";
             """
         elif table_name.lower() == "constit":
             insert_query = f"""
-                INSERT INTO CONSTIT (chunk_id, cid, chunk_number, nature, solution, titre, numero, date_decision, chunk_text, "embeddings_{model_name}")
+                INSERT INTO CONSTIT (chunk_id, cid, chunk_number, nature, solution, title, number, decision_date, chunk_text, "embeddings_{model_name}")
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 cid = EXCLUDED.cid,
                 chunk_number = EXCLUDED.chunk_number,
                 nature = EXCLUDED.nature,
                 solution = EXCLUDED.solution,
-                titre = EXCLUDED.titre,
-                numero = EXCLUDED.numero,
-                date_decision = EXCLUDED.date_decision,
+                title = EXCLUDED.title,
+                number = EXCLUDED.number,
+                decision_date = EXCLUDED.decision_date,
                 chunk_text = EXCLUDED.chunk_text,
                 "embeddings_{model_name}" = EXCLUDED."embeddings_{model_name}";
             """

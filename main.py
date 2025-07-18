@@ -3,13 +3,13 @@
 """Albert Bibliothèque CLI.
 
 Usage:
-    main.py download_files (--all | --source=<source>)
-    main.py download_and_process_files (--all | --source=<source>) [--model=<model_name>]
-    main.py create_tables [--model=<model_name>] [--delete-existing]
-    main.py process_files (--all | --source=<source>) [--folder=<path>] [--model=<model_name>]
-    main.py split_table [--source=<source>]
-    main.py export_tables [--output=<path>]
-    main.py upload_dataset (--all | --input=<path>) [--dataset-name=<name>] [--private]
+    main.py download_files (--all | --source=<source>) [--debug]
+    main.py download_and_process_files (--all | --source=<source>) [--model=<model_name>] [--debug]
+    main.py create_tables [--model=<model_name>] [--delete-existing] [--debug]
+    main.py process_files (--all | --source=<source>) [--folder=<path>] [--model=<model_name>] [--debug]
+    main.py split_table [--source=<source>] [--debug]
+    main.py export_tables [--output=<path>] [--debug]
+    main.py upload_dataset (--all | --input=<path>) [--dataset-name=<name>] [--private] [--debug]
     main.py -h | --help
 
 Commands:
@@ -34,12 +34,14 @@ Options:
     --dataset-name=<name>   Name of the dataset to upload to Hugging Face
     --output=<path>         Output folder for Parquet files [default: data/parquet]
     --private               Upload dataset as private on Hugging Face
+    --debug                 Enable debug logging
     -h --help               Show this help message
 
 Examples:
     main.py create_tables --model BAAI/bge-m3 --delete-existing
     main.py download_files --all
-    main.py download_and_process_files --source service_public --model BAAI/bge-m3
+    main.py download_and_process_files --source service_public --model BAAI/bge-m3 --debug
+    main.py download_and_process_files --all --model BAAI/bge-m3
     main.py process_files --source service_public --model BAAI/bge-m3
     main.py process_files --all --folder data/unprocessed --model BAAI/bge-m3
     main.py split_table --source legi
@@ -76,14 +78,15 @@ from download_and_processing import (
 )
 from utils import export_tables_to_parquet
 
-# Setup logging at the start
-setup_logging()
-logger = get_logger(__name__)
-
 
 def main():
     try:
         args = docopt(__doc__)
+
+        # Setup logging
+        debug_mode = args.get("--debug", False)
+        setup_logging(debug=debug_mode)
+        logger = get_logger(__name__)
 
         # Download files
         if args["download_files"]:
@@ -173,11 +176,10 @@ def main():
                     logger.error(f"Unknown source: {source}")
                     return 1
                 else:
-                    logger.info(
-                        f"Downloading and processing all files using config: {config_file_path} and history: {data_history_path}"
-                    )
-
                     for data_name in source_map[source]:
+                        logger.info(
+                            f"Downloading and processing {data_name} files using config: {config_file_path} and history: {data_history_path}"
+                        )
                         download_and_optionally_process_files(
                             data_name=data_name,
                             config_file_path=config_file_path,

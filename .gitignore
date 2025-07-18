@@ -11,6 +11,7 @@ config/data_history.json
 test.*
 test/
 nohup.out
+*.tmp
 
 # Build artifacts
 build/

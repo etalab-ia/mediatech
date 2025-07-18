@@ -138,9 +138,9 @@ def download_and_optionally_process_files(
                 logger.error(f"Error downloading files: {e}")
 
         elif attributes.get("type") == "directory":
-            storage_dir = attributes.get("download_folder", "")
-            os.makedirs(storage_dir, exist_ok=True)
-            old_files = os.listdir(storage_dir)
+            download_folder = attributes.get("download_folder", "")
+            os.makedirs(download_folder, exist_ok=True)
+            old_files = os.listdir(download_folder)
 
             logger.info(f"downloading {data_name} archive...")
             url = requests.head(attributes["download_url"], allow_redirects=True).url
@@ -149,39 +149,39 @@ def download_and_optionally_process_files(
 
             try:
                 wget.download(
-                    attributes["download_url"], os.path.join(storage_dir, file)
+                    attributes["download_url"], os.path.join(download_folder, file)
                 )
             except Exception as e:
                 logger.error(f"Error downloading files: {e}")
 
             logger.debug(f"unpacking {data_name} archive...")
-            shutil.unpack_archive(os.path.join(storage_dir, file), storage_dir)
+            shutil.unpack_archive(os.path.join(download_folder, file), download_folder)
 
             logger.debug(f"deleting {data_name} archive...")
-            os.remove((os.path.join(storage_dir, file)))
+            os.remove((os.path.join(download_folder, file)))
 
-            new_files = [x for x in os.listdir(storage_dir) if x not in old_files]
+            new_files = [x for x in os.listdir(download_folder) if x not in old_files]
             logger.debug(f"new files: {new_files}")
 
             for downloaded_file in new_files:
                 if not downloaded_file.endswith(".json"):
                     logger.debug(f"deleting {downloaded_file}...")
-                    os.remove(os.path.join(storage_dir, downloaded_file))
+                    os.remove(os.path.join(download_folder, downloaded_file))
 
                 else:
                     logger.debug(f"renaming {downloaded_file} to {data_name}.json...")
                     os.rename(
-                        os.path.join(storage_dir, downloaded_file),
-                        os.path.join(storage_dir, f"{data_name}.json"),
+                        os.path.join(download_folder, downloaded_file),
+                        os.path.join(download_folder, f"{data_name}.json"),
                     )
 
                     logger.debug(
-                        f"Successfully downloaded {downloaded_file} to {storage_dir}"
+                        f"Successfully downloaded {downloaded_file} to {download_folder}"
                     )
 
                     if process:
                         # Process the downloaded file and remove the folder after processing
-                        process_data(base_folder=storage_dir, model=model)
+                        process_data(base_folder=download_folder, model=model)
 
                         logger.info(
                             f"Successfully downloaded and processed {data_name}"
@@ -205,19 +205,19 @@ def download_and_optionally_process_files(
 
         elif attributes.get("type") == "sheets":
             # Script based on the pyalbert.corpus.download_rag_sources function)
-            storage_dir = attributes.get("download_folder", "")
+            download_folder = attributes.get("download_folder", "")
 
             # create the storage path if it does not exist
-            os.makedirs(storage_dir, exist_ok=True)
-            target = f"{storage_dir}/{data_name}"
-            filename_tmp = f"{storage_dir}/temp_{data_name}"
+            os.makedirs(download_folder, exist_ok=True)
+            target = f"{download_folder}/{data_name}"
+            filename_tmp = f"{download_folder}/temp_{data_name}"
 
             logger.info(f"Downloading '{data_name}'...")
             if os.path.exists(filename_tmp):
                 os.remove(filename_tmp)
             try:
                 old_name = wget.download(
-                    attributes.get("download_url"), out=storage_dir
+                    attributes.get("download_url"), out=download_folder
                 )
                 shutil.move(old_name, filename_tmp)  # Renaming the file to temp
             except HTTPError as err:
@@ -265,7 +265,7 @@ def download_and_optionally_process_files(
         elif attributes.get("type") == "data_gouv":
             logger.info(f"Downloading '{data_name}'...")
             url = attributes.get("download_url", "")
-            storage_dir = attributes.get("download_folder", "")
+            download_folder = attributes.get("download_folder", "")
             try:
                 last_downloaded_file = log.get(data_name).get(
                     "last_downloaded_file", ""
@@ -273,7 +273,7 @@ def download_and_optionally_process_files(
             except Exception:
                 last_downloaded_file = ""
 
-            os.makedirs(storage_dir, exist_ok=True)
+            os.makedirs(download_folder, exist_ok=True)
 
             if data_name == "data_gouv_datasets_catalog":
                 try:
@@ -313,11 +313,11 @@ def download_and_optionally_process_files(
                         try:
                             wget.download(
                                 download_url,
-                                os.path.join(storage_dir, f"{data_name}.csv"),
+                                os.path.join(download_folder, f"{data_name}.csv"),
                             )
 
                             logger.info(
-                                f"Successfully downloaded {downloaded_file_name} to {storage_dir} as {data_name}.csv"
+                                f"Successfully downloaded {downloaded_file_name} to {download_folder} as {data_name}.csv"
                             )
 
                             if process:

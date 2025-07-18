@@ -92,7 +92,7 @@ def _get_metadata(soup):
         "url": url,
         "audience": ", ".join(extract_all(soup, "Audience")),
         "theme": ", ".join(extract_all(soup, "Theme")),
-        "surtitre": extract(soup, "SurTitre"),
+        "surtitle": extract(soup, "SurTitre"),
         "subject": extract(soup, "dc:subject"),
         "title": extract(soup, "dc:title"),
         "description": extract(soup, "dc:description"),
@@ -529,7 +529,7 @@ def _parse_travailEmploi(target_dir: str, structured: bool = False) -> list[dict
             "sid": doc["pubId"],
             "introduction": get_text(BeautifulSoup(doc["intro"], "html.parser")),
             "text": join_sections(doc["sections"]),
-            "surtitre": "Travail-Emploi",
+            "surtitle": "Travail-Emploi",
             "source": "travail-emploi",
         }
 
