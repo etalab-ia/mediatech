@@ -2,148 +2,148 @@
 
 ## Description
 
-Ce projet traite les données publiques mises à disposition par les administrations pour alimenter la base de connaissance d'ALBERT API et faciliter l'accès aux données publiques vectorisées dans la fonction publique.  
-Il inclut des scripts pour télécharger, traiter, embedder, insérer ces données dans une base PostgreSQL et faciliter leur exportation via divers moyens.
+This project processes public data made available by various administrations in order to facilitate access to vectorized and ready-to-use public data for AI applications in the public sector.
+It includes scripts for downloading, processing, embedding, and inserting this data into a PostgreSQL database, and facilitates its export via various means.
 
 ## Instructions
 
-### Installation des dépendances
+### Installing Dependencies
 
-1. Créez un environnement virtuel et activez-le :
+1. Create and activate a virtual environment:
    ```bash
-   python -m venv .venv  # Créer l'environnement virtuel
-   source .venv/bin/activate  # Activer l'environnement virtuel (Linux/Mac)
+   python -m venv .venv  # Create the virtual environment
+   source .venv/bin/activate  # Activate the virtual environment
    ```
 
-2. Installez les dépendances nécessaires :
+2. Install the required dependencies:
    ```bash
    pip install -e .
    ```
 
-> L'installation en mode développement (`-e`) permet d'utiliser la commande `bibliotheque` et de modifier le code sans réinstallation.
+> Installing in development mode (`-e`) allows you to use the `bibliotheque` command and modify the code without reinstalling.
 
-> **Note :** Assurez-vous que l'environnement est correctement configuré avant de continuer.
+> **Note:** Make sure your environment is properly configured before continuing.
 
-### Configuration de la base PostgreSQL
+### PostgreSQL Database Configuration
 
-1. Démarrez le conteneur PostgreSQL avec Docker :
+1. Start the PostgreSQL container with Docker:
    ```bash
    docker compose up -d
    ```
 
-2. Vérifiez que le conteneur est en cours d'exécution :
+2. Check that the container is running:
    ```bash
    docker ps
    ```
 
-3. Configurez les variables d'environnement dans un fichier [`.env`](.env) en vous basant sur l'exemple contenu dans le fichier [`.env.example`](.env.example).
+3. Set up the environment variables in a [`.env`](.env) file based on the example in [`.env.example`](.env.example).
 
-### Télécharger et traiter les données
+### Downloading and Processing Data
 
-#### Utilisation de la commande `bibliotheque`
+#### Using the `bibliotheque` Command
 
-Après installation, la commande `bibliotheque` est disponible globalement et remplace `python main.py` :
+After installation, the `bibliotheque` command is available globally and replaces `python main.py`:
 
-> Si vous rencontrez des soucis avec la commande `bibliotheque`, il reste tout de même possible d'utiliser la commande `python main.py` à la place.
+> If you encounter issues with the `bibliotheque` command, you can still use `python main.py` instead.
 
-Le fichier [`main.py`](main.py) est le point d'entrée principal du projet et propose une interface en ligne de commande (CLI) pour exécuter chaque étape du pipeline séparément.  
-Vous pouvez l'utiliser ainsi :
-
-```bash
-bibliotheque <commande> [options]
-```
-ou 
+The [`main.py`](main.py) file is the main entry point of the project and provides a command-line interface (CLI) to run each step of the pipeline separately.  
+You can use it as follows:
 
 ```bash
-python main.py <commande> [options]
+bibliotheque <command> [options]
+```
+or 
+
+```bash
+python main.py <command> [options]
 ```
 
-Exemples de commandes :
-- Voir l'aide :
+Command examples:
+- View help:
   ```bash
   bibliotheque --help
   ```
-- Créer les tables PostgreSQL:  
+- Create PostgreSQL tables:  
   ```bash
   bibliotheque create_tables --model BAAI/bge-m3
   ```
-- Télécharger tous les fichiers répertoriés dans [`data_config.json`](config/data_config.json):  
+- Download all files listed in [`data_config.json`](config/data_config.json):  
   ```bash
   bibliotheque download_files --all
   ```
-- Télécharger les fichiers de la source `service_public` :  
+- Download files from the `service_public` source:  
   ```bash
   bibliotheque download_files --source service_public
   ```
-- Télécharger et traiter tous les fichiers répertoriés dans [`data_config.json`](config/data_config.json):  
+- Download and process all files listed in [`data_config.json`](config/data_config.json):  
   ```bash
   bibliotheque download_and_process_files --all --model BAAI/bge-m3
   ```
-- Traiter toutes les données :  
+- Process all data:  
   ```bash
   bibliotheque process_files --all --model BAAI/bge-m3
   ```
-- Diviser une table en sous tables basés sur differents critères (cf: [`main.py`](main.py)) :
+- Split a table into subtables based on different criteria (see [`main.py`](main.py)):  
   ```bash
   bibliotheque split_table --source legi
   ```
-- Exporter les tables PostgreSQL en fichier parquet:  
+- Export PostgreSQL tables to parquet files:  
   ```bash
   bibliotheque export_tables --output data/parquet
   ```
-- Téléverser les datasets en format parquet sur le repository Hugging Face:
+- Upload parquet datasets to the Hugging Face repository:
   ```bash
   bibliotheque upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public
   ```
 
 
-Executez `bibliotheque --help` dans votre terminal pour voir toutes les options disponibles, ou consultez directement le code contenu dans [`main.py`](main.py).
+Run `bibliotheque --help` in your terminal to see all available options, or check the code directly in [`main.py`](main.py).
 
 
-#### Utilisation alternative avec `python main.py`
+#### Alternative Usage with `python main.py`
 
-Si vous préférez utiliser directement le script Python, vous pouvez toujours utiliser :
+If you prefer to use the Python script directly, you can always use:
 
 ```bash
-python main.py <commande> [options]
+python main.py <command> [options]
 ```
 
-Exemples :
+Examples:
 ```bash
 python main.py download_files
 python main.py create_tables --model BAAI/bge-m3
 python main.py process_files --all --model BAAI/bge-m3
 ```
-#### Utilisation du script [`update.sh`](update.sh)
+#### Using the [`update.sh`](update.sh) Script
 
-Le script [`update.sh`](update.sh) permet d'executer l'ensemble du pipeline de traitement des données : téléchargement, création des tables, vectorisation et export.  
-Pour l'exécuter, lancez la commande suivante depuis la racine du projet :
+The [`update.sh`](update.sh) script allows you to run the entire data processing pipeline: downloading, table creation, vectorization, and export.  
+To run it, execute the following command from the project root:
 
 ```bash
 ./scripts/update.sh
 ```
 
-Ce script va :
-- Attendre que la base PostgreSQL soit disponible,
-- Créer ou mettre à jour les tables nécessaires dans la base PostgreSQL,
-- Télécharger les fichiers publics répertoriés dans [`data_config.json`](config/data_config.json),
-- Traiter et vectoriser les données,
-- Exporter les tables au format Parquet,
-- Téléverser les fichiers Parquet sur [Hugging Face](https://huggingface.co/AgentPublic).
+This script will:
+- Wait for the PostgreSQL database to be available,
+- Create or update the necessary tables in the PostgreSQL database,
+- Download public files listed in [`data_config.json`](config/data_config.json),
+- Process and vectorize the data,
+- Export the tables in Parquet format,
+- Upload the Parquet files to [Hugging Face](https://huggingface.co/AgentPublic).
 
-### Structure du projet
+### Project Structure
 
-- **[`main.py`](main.py)** : Point d'entrée principal pour exécuter le pipeline complet via un CLI.
-- **[`pyproject.toml`](pyproject.toml)** : Configuration du projet Python et des dépendances.
-- **[`download_and_processing/`](download_and_processing/)** : Contient les scripts pour télécharger et extraire les fichiers.
-- **[`database/`](database/)** : Contient les scripts pour gérer la base de données (création de tables, insertion de données).
-- **[`utils/`](utils/)** : Contient des fonctions utilitaires partagées entre les différents modules.
-- **[`config/`](config/)** : Contient les scripts de configuration du projet.
-- **[`logs/`](logs/)** : Contient les fichiers journaux pour suivre l'exécution des scripts.
-- **[`scripts/`](scripts/)** : Contient l'ensemble des script shell executés soit périodiquement ou manuellement dans certains cas.
-  - **[`scripts/update.sh`](scripts/update.sh)** : Script shell pour éxecuter l'ensemble du pipeline de traitement des données.
-  - **[`scripts/periodic_update.sh`](scripts/periodic_update.sh)** : Script shell pour automatiser l'ensemble de la pipeline sur la machine virtuelle. Ce script est executé periodiquement par [`cron_config.txt`](cron_config.txt).
-  - **[`scripts/backup.sh`](scripts/backup.sh)** : Script shell pour sauvegarder le volume de la base Pgvector (PostgreSQL) ainsi que certains fichiers de configurations. Ce script est executé periodiquement par [`cron_config.txt`](cron_config.txt).
-  - **[`scripts/restore.sh`](scripts/restore.sh)** : Script shell pour restaurer le volume de la base Pgvector (PostgreSQL) ainsi que certains fichiers de configurations si nécessaire.
-  - **[`scripts/deployment_packages.sh`](scripts/deployment_packages.sh)** : Script shell pour installer automatiquement les paquets système nécessaires au projet (via apt) et configurer les permissions Docker. Il lit la liste des paquets à installer dans [`config/requirements-apt.txt`](config/requirements-apt.txt), installe ceux qui manquent, et execute des commandes administrateurs si besoin. À exécuter après le clonage du projet ou lors d'une mise à jour de l'environnement système.
-  - **[`scripts/delete_old_logs.sh`](scripts/delete_old_logs.sh)** : Script shell pour supprimer automatiquement les anciens fichiers de logs du dossier [`logs/`](logs/). Par défaut, il conserve les logs des 14 derniers jours et supprime les plus anciens. Ce script peut être exécuté manuellement ou programmé via cron pour garder le dossier de logs propre.
+- **[`main.py`](main.py)**: Main entry point to run the complete pipeline via CLI.
+- **[`pyproject.toml`](pyproject.toml)**: Python project and dependency configuration.
+- **[`download_and_processing/`](download_and_processing/)**: Contains scripts to download and extract files.
+- **[`database/`](database/)**: Contains scripts to manage the database (table creation, data insertion).
+- **[`utils/`](utils/)**: Contains utility functions shared across modules.
+- **[`config/`](config/)**: Contains project configuration scripts.
+- **[`logs/`](logs/)**: Contains log files to track script execution.
+- **[`scripts/`](scripts/)**: Contains all shell scripts, executed either periodically or manually in some cases.
+  - **[`scripts/update.sh`](scripts/update.sh)**: Shell script to run the entire data processing pipeline.
+  - **[`scripts/periodic_update.sh`](scripts/periodic_update.sh)**: Shell script to automate the pipeline on the virtual machine. This script is executed periodically by [`cron_config.txt`](cron_config.txt).
+  - **[`scripts/backup.sh`](scripts/backup.sh)**: Shell script to back up the Pgvector (PostgreSQL) volume and some configuration files. This script is executed periodically by [`cron_config.txt`](cron_config.txt).
+  - **[`scripts/restore.sh`](scripts/restore.sh)**: Shell script to restore the Pgvector (PostgreSQL) volume and configuration files if needed.
+  - **[`scripts/deployment_packages.sh`](scripts/deployment_packages.sh)**: Shell script to automatically install the required system packages (via apt) and configure Docker permissions. It reads the list of packages to install from [`config/requirements-apt.txt`](config/requirements-apt.txt), installs missing ones, and runs admin commands if needed. Run after cloning the project or when updating the system environment.
+  - **[`scripts/delete_old_logs.sh`](scripts/delete_old_logs.sh)**: Shell script to automatically delete old log files from the [`logs/`](logs/) folder. It keeps logs from the last X days and deletes older ones. This script can be run manually or scheduled via cron to keep the logs folder clean.
