@@ -1,4 +1,4 @@
-# ALBERT Bibliothèque
+# MEDIATECH
 
 ## Description
 
@@ -20,7 +20,7 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
    pip install -e .
    ```
 
-> L'installation en mode développement (`-e`) permet d'utiliser la commande `bibliotheque` et de modifier le code sans réinstallation.
+> L'installation en mode développement (`-e`) permet d'utiliser la commande `mediatech` et de modifier le code sans réinstallation.
 
 > **Note :** Assurez-vous que l'environnement est correctement configuré avant de continuer.
 
@@ -40,17 +40,17 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
 
 ### Télécharger et traiter les données
 
-#### Utilisation de la commande `bibliotheque`
+#### Utilisation de la commande `mediatech`
 
-Après installation, la commande `bibliotheque` est disponible globalement et remplace `python main.py` :
+Après installation, la commande `mediatech` est disponible globalement et remplace `python main.py` :
 
-> Si vous rencontrez des soucis avec la commande `bibliotheque`, il reste tout de même possible d'utiliser la commande `python main.py` à la place.
+> Si vous rencontrez des soucis avec la commande `mediatech`, il reste tout de même possible d'utiliser la commande `python main.py` à la place.
 
 Le fichier [`main.py`](main.py) est le point d'entrée principal du projet et propose une interface en ligne de commande (CLI) pour exécuter chaque étape du pipeline séparément.  
 Vous pouvez l'utiliser ainsi :
 
 ```bash
-bibliotheque <commande> [options]
+mediatech <commande> [options]
 ```
 ou 
 
@@ -61,43 +61,43 @@ python main.py <commande> [options]
 Exemples de commandes :
 - Voir l'aide :
   ```bash
-  bibliotheque --help
+  mediatech --help
   ```
 - Créer les tables PostgreSQL:  
   ```bash
-  bibliotheque create_tables --model BAAI/bge-m3
+  mediatech create_tables --model BAAI/bge-m3
   ```
 - Télécharger tous les fichiers répertoriés dans [`data_config.json`](config/data_config.json):  
   ```bash
-  bibliotheque download_files --all
+  mediatech download_files --all
   ```
 - Télécharger les fichiers de la source `service_public` :  
   ```bash
-  bibliotheque download_files --source service_public
+  mediatech download_files --source service_public
   ```
 - Télécharger et traiter tous les fichiers répertoriés dans [`data_config.json`](config/data_config.json):  
   ```bash
-  bibliotheque download_and_process_files --all --model BAAI/bge-m3
+  mediatech download_and_process_files --all --model BAAI/bge-m3
   ```
 - Traiter toutes les données :  
   ```bash
-  bibliotheque process_files --all --model BAAI/bge-m3
+  mediatech process_files --all --model BAAI/bge-m3
   ```
 - Diviser une table en sous tables basés sur differents critères (cf: [`main.py`](main.py)) :
   ```bash
-  bibliotheque split_table --source legi
+  mediatech split_table --source legi
   ```
 - Exporter les tables PostgreSQL en fichier parquet:  
   ```bash
-  bibliotheque export_tables --output data/parquet
+  mediatech export_tables --output data/parquet
   ```
 - Téléverser les datasets en format parquet sur le repository Hugging Face:
   ```bash
-  bibliotheque upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public
+  mediatech upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public
   ```
 
 
-Executez `bibliotheque --help` dans votre terminal pour voir toutes les options disponibles, ou consultez directement le code contenu dans [`main.py`](main.py).
+Executez `mediatech --help` dans votre terminal pour voir toutes les options disponibles, ou consultez directement le code contenu dans [`main.py`](main.py).
 
 
 #### Utilisation alternative avec `python main.py`

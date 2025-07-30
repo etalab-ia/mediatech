@@ -35,7 +35,7 @@ log() {
 }
 
 log "INFO" "========================================="
-log "INFO" "Starting Albert Bibliothèque deployment packages setup"
+log "INFO" "Starting Mediatech deployment packages setup"
 log "INFO" "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 log "INFO" "========================================="
 

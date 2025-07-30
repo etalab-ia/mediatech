@@ -7,7 +7,7 @@ load_dotenv()
 # PostgreSQL configuration
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5433")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "albert_bibliotheque")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "mediatech")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
 

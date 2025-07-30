@@ -51,7 +51,7 @@ mkdir -p "$PG_BACKUP_DIR" "$CONFIG_BACKUP_DIR"
 
 
 log "INFO" "========================================="
-log "INFO" "Starting Albert Bibliothèque backup process"
+log "INFO" "Starting Mediatech backup process"
 log "INFO" "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 log "INFO" "========================================="
 

@@ -1,10 +1,10 @@
 [project]
-name = "albert-bibliotheque"
-description = "ALBERT BIBLIOTHEQUE : Traitement des données mis à disposition publiquement par les administrations afin d'alimenter la base de connaissance d'ALBERT API et de faciliter l'accès aux données publiques vectorisées dans la fonction publique."
+name = "mediatech"
+description = "MEDIATECH: Processing of data made publicly available by French government agencies, to facilitate access to vectorized and ready for AI projects public data within the civil service."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-keywords = ["IA", "LLM", "ALBERT","DATA", "BIBLIOTHEQUE"]
+keywords = ["IA", "LLM", "ALBERT","DATA", "BIBLIOTHEQUE","MEDIATECH"]
 authors = [
     {name = "Etalab", email = "etalab@modernisation.gouv.fr"}
 ]
@@ -30,8 +30,8 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/etalab-ia/albert-bibliotheque"
-Documentation = "https://github.com/etalab-ia/albert-bibliotheque"
+Source = "https://github.com/etalab-ia/mediatech"
+Documentation = "https://github.com/etalab-ia/mediatech"
 
 [project.optional-dependencies]
 dev = [
@@ -39,7 +39,7 @@ dev = [
 ]
 
 [project.scripts]
-bibliotheque = "main:main"
+mediatech = "main:main"
 
 [tool.setuptools.packages.find]
 include = ["config*", "database*", "download_and_processing*", "utils*"]

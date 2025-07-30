@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Daily automation script for albert-bibliotheque
+# Daily automation script for Mediatech
 # This script handles: git pull, virtual environment, dependencies, execution
 
 # Fix environment for cron

@@ -31,7 +31,7 @@ jobs:
     
     - name: Validate installation
       run: |
-        bibliotheque --help  # Check if the command is available
+        mediatech --help  # Check if the command is available
         python -c "import config; import database; import download_and_processing; print('All imports are OK')"
 
   deploy:

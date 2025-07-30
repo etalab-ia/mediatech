@@ -1,4 +1,4 @@
-# ALBERT Bibliothèque
+# MEDIATECH
 
 ## Description
 
@@ -20,7 +20,7 @@ It includes scripts for downloading, processing, embedding, and inserting this d
    pip install -e .
    ```
 
-> Installing in development mode (`-e`) allows you to use the `bibliotheque` command and modify the code without reinstalling.
+> Installing in development mode (`-e`) allows you to use the `mediatech` command and modify the code without reinstalling.
 
 > **Note:** Make sure your environment is properly configured before continuing.
 
@@ -40,17 +40,17 @@ It includes scripts for downloading, processing, embedding, and inserting this d
 
 ### Downloading and Processing Data
 
-#### Using the `bibliotheque` Command
+#### Using the `mediatech` Command
 
-After installation, the `bibliotheque` command is available globally and replaces `python main.py`:
+After installation, the `mediatech` command is available globally and replaces `python main.py`:
 
-> If you encounter issues with the `bibliotheque` command, you can still use `python main.py` instead.
+> If you encounter issues with the `mediatech` command, you can still use `python main.py` instead.
 
 The [`main.py`](main.py) file is the main entry point of the project and provides a command-line interface (CLI) to run each step of the pipeline separately.  
 You can use it as follows:
 
 ```bash
-bibliotheque <command> [options]
+mediatech <command> [options]
 ```
 or 
 
@@ -61,43 +61,43 @@ python main.py <command> [options]
 Command examples:
 - View help:
   ```bash
-  bibliotheque --help
+  mediatech --help
   ```
 - Create PostgreSQL tables:  
   ```bash
-  bibliotheque create_tables --model BAAI/bge-m3
+  mediatech create_tables --model BAAI/bge-m3
   ```
 - Download all files listed in [`data_config.json`](config/data_config.json):  
   ```bash
-  bibliotheque download_files --all
+  mediatech download_files --all
   ```
 - Download files from the `service_public` source:  
   ```bash
-  bibliotheque download_files --source service_public
+  mediatech download_files --source service_public
   ```
 - Download and process all files listed in [`data_config.json`](config/data_config.json):  
   ```bash
-  bibliotheque download_and_process_files --all --model BAAI/bge-m3
+  mediatech download_and_process_files --all --model BAAI/bge-m3
   ```
 - Process all data:  
   ```bash
-  bibliotheque process_files --all --model BAAI/bge-m3
+  mediatech process_files --all --model BAAI/bge-m3
   ```
 - Split a table into subtables based on different criteria (see [`main.py`](main.py)):  
   ```bash
-  bibliotheque split_table --source legi
+  mediatech split_table --source legi
   ```
 - Export PostgreSQL tables to parquet files:  
   ```bash
-  bibliotheque export_tables --output data/parquet
+  mediatech export_tables --output data/parquet
   ```
 - Upload parquet datasets to the Hugging Face repository:
   ```bash
-  bibliotheque upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public
+  mediatech upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public
   ```
 
 
-Run `bibliotheque --help` in your terminal to see all available options, or check the code directly in [`main.py`](main.py).
+Run `mediatech --help` in your terminal to see all available options, or check the code directly in [`main.py`](main.py).
 
 
 #### Alternative Usage with `python main.py`

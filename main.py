@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Albert Bibliothèque CLI.
+"""Mediatech CLI.
 
 Usage:
     main.py download_files (--all | --source=<source>) [--debug]

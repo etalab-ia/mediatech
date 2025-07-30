@@ -66,7 +66,7 @@ BACKUP_FILE="$1"
 CONFIG_FILE="$2"
 
 log "INFO" "========================================="
-log "INFO" "Starting Albert Bibliothèque restore process"
+log "INFO" "Starting Mediatech restore process"
 log "INFO" "Date: $(date '+%Y-%m-%d %H:%M:%S')"
 log "INFO" "========================================="
 log "INFO" "Database backup: $BACKUP_FILE"
