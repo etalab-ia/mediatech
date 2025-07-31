@@ -1,5 +1,8 @@
 # MEDIATECH
 
+[![License](https://img.shields.io/github/license/etalab-ia/mediatech?color=red&label=license)](https://github.com/etalab-ia/mediatech/blob/main/LICENSE)
+[![English version](https://img.shields.io/badge/🇬🇧-English%20version-blue)](../README.md)
+
 ## Description
 
 Ce projet traite les données publiques mises à disposition par divers administrations afin de faciliter l'accès à des données publiques vectorisées et prêtes à l'emploi pour des usages IA dans la fonction publique.  
@@ -147,3 +150,7 @@ Ce script va :
   - **[`scripts/restore.sh`](scripts/restore.sh)** : Script shell pour restaurer le volume de la base Pgvector (PostgreSQL) ainsi que certains fichiers de configurations si nécessaire.
   - **[`scripts/deployment_packages.sh`](scripts/deployment_packages.sh)** : Script shell pour installer automatiquement les paquets système nécessaires au projet (via apt) et configurer les permissions Docker. Il lit la liste des paquets à installer dans [`config/requirements-apt.txt`](config/requirements-apt.txt), installe ceux qui manquent, et execute des commandes administrateurs si besoin. À exécuter après le clonage du projet ou lors d'une mise à jour de l'environnement système.
   - **[`scripts/delete_old_logs.sh`](scripts/delete_old_logs.sh)** : Script shell pour supprimer automatiquement les anciens fichiers de logs du dossier [`logs/`](logs/). Il conserve les logs des X derniers jours et supprime les plus anciens. Ce script peut être exécuté manuellement ou programmé via cron pour garder le dossier de logs propre.
+
+## Licence
+
+Ce projet est sous [Licence MIT](./LICENSE).
