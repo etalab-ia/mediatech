@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/github/license/etalab-ia/mediatech?color=red&label=license)](https://github.com/etalab-ia/mediatech/blob/main/LICENSE)
 [![English version](https://img.shields.io/badge/🇬🇧-English%20version-blue)](../README.md)
+[![Collection Hugging Face ](https://img.shields.io/badge/🤗-Collection%20Hugging%20Face-yellow)](https://huggingface.co/collections/AgentPublic/mediatech-68309e15729011f49ef505e8)
 
 ## Description
 
