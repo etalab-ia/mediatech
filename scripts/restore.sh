@@ -4,6 +4,11 @@ set -e
 
 # Configuration
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Load environment variables
+cd $PROJECT_DIR
+source .env
+
 PG_BACKUP_DIR="$PROJECT_DIR/backups/postgres"
 CONFIG_BACKUP_DIR="$PROJECT_DIR/backups/config"
 CONTAINER_NAME="pgvector_container"
