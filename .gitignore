@@ -1,13 +1,17 @@
+# Misc
 data/
 logs/
 backups/
 venv/*
+.venv/*
 *.log
 .env
 __pycache__/
 
+# Configuration files
 config/data_history.json
 
+# Temporary and test files
 test.*
 test/
 nohup.out
@@ -17,3 +21,7 @@ tmp/
 build/
 dist/
 *.egg-info/
+
+# Airflow
+airflow/config/*.cfg
+airflow/logs

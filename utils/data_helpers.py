@@ -311,7 +311,7 @@ def export_tables_to_parquet(output_folder: str = parquet_files_folder):
 
                 conn.execute(f"SELECT * FROM postgres_db.{table_name} LIMIT 1")
 
-                output_path = f"{output_folder}/{table_name}.parquet"
+                output_path = os.path.join(output_folder, f"{table_name}.parquet")
                 logger.info(
                     f"Exporting {table_row_count} rows from table '{table_name}' to Parquet file: {output_path}"
                 )

@@ -48,7 +48,7 @@ def process_data_gouv_files(target_dir: str, model: str = "BAAI/bge-m3"):
         model (str): Model name for embedding generation. Defaults to "BAAI/bge-m3"
 
     """
-    if target_dir == DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER:
+    if DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER.endswith(target_dir):
         table_name = "data_gouv_datasets_catalog"
         df = pd.read_csv(f"{target_dir}/{table_name}.csv", sep=";", encoding="utf-8")
 
@@ -125,7 +125,9 @@ def process_data_gouv_files(target_dir: str, model: str = "BAAI/bge-m3"):
         logger.error(
             f"Unknown target directory '{target_dir}' for processing data.gouv.fr files."
         )
-        return
+        raise ValueError(
+            f"Unknown target directory '{target_dir}' for processing data.gouv.fr files."
+        )
 
 
 def process_directories(
@@ -158,15 +160,17 @@ def process_directories(
     """
 
     # Check if the target directory is valid
-    if target_dir == STATE_ADMINISTRATIONS_DIRECTORY_FOLDER:
+    if STATE_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(target_dir):
         table_name = "state_administrations_directory"
-    elif target_dir == LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER:
+    elif LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(target_dir):
         table_name = "local_administrations_directory"
     else:
         logger.error(
             f"Unknown target directory '{target_dir}' for processing directories."
         )
-        return
+        raise ValueError(
+            f"Unknown target directory '{target_dir}' for processing directories."
+        )
 
     ### Loading directory
     directory = []
@@ -1059,16 +1063,17 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
 
 def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int = 10):
     table_name = ""
-    if target_dir in [
-        SERVICE_PUBLIC_PRO_DATA_FOLDER,
-        SERVICE_PUBLIC_PART_DATA_FOLDER,
-    ]:
+    if SERVICE_PUBLIC_PRO_DATA_FOLDER.endswith(
+        target_dir
+    ) or SERVICE_PUBLIC_PART_DATA_FOLDER.endswith(target_dir):
         table_name = "service_public"
-    elif target_dir == TRAVAIL_EMPLOI_DATA_FOLDER:
+    elif TRAVAIL_EMPLOI_DATA_FOLDER.endswith(target_dir):
         table_name = "travail_emploi"
     else:
         logger.error(f"Unknown target directory '{target_dir}' for processing sheets.")
-        return
+        raise ValueError(
+            f"Unknown target directory '{target_dir}' for processing sheets."
+        )
 
     with open(os.path.join(target_dir, "sheets_as_chunks.json")) as f:
         documents = json.load(f)
@@ -1180,10 +1185,10 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
     """
 
     all_dirs = sorted(os.listdir(base_folder))
-    if base_folder in [
-        STATE_ADMINISTRATIONS_DIRECTORY_FOLDER,
-        LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER,
-    ]:
+
+    if STATE_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(
+        base_folder
+    ) or LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(base_folder):
         logger.info(f"Processing directory files located in : {base_folder}")
         process_directories(
             target_dir=base_folder,
@@ -1198,7 +1203,7 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
 
         remove_folder(folder_path=base_folder)
         logger.debug(f"Folder: {base_folder} successfully removed after processing")
-    elif base_folder == DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER:
+    elif DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER.endswith(base_folder):
         logger.info(f"Processing files located in : {base_folder}")
 
         process_data_gouv_files(target_dir=base_folder, model=model)
@@ -1209,7 +1214,7 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
 
         remove_folder(folder_path=base_folder)
         logger.debug(f"Folder: {base_folder} successfully removed after processing")
-    elif base_folder == TRAVAIL_EMPLOI_DATA_FOLDER:
+    elif TRAVAIL_EMPLOI_DATA_FOLDER.endswith(base_folder):
         logger.info(f"Processing files located in : {base_folder}")
 
         make_chunks_sheets(
@@ -1228,10 +1233,9 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
         remove_folder(folder_path=base_folder)
         logger.debug(f"Folder: {base_folder} successfully removed after processing")
 
-    elif base_folder in [
-        SERVICE_PUBLIC_PRO_DATA_FOLDER,
-        SERVICE_PUBLIC_PART_DATA_FOLDER,
-    ]:
+    elif SERVICE_PUBLIC_PRO_DATA_FOLDER.endswith(
+        base_folder
+    ) or SERVICE_PUBLIC_PART_DATA_FOLDER.endswith(base_folder):
         logger.info(f"Processing files located in : {base_folder}")
 
         make_chunks_sheets(
@@ -1249,7 +1253,7 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
         remove_folder(folder_path=base_folder)
         logger.debug(f"Folder: {base_folder} successfully removed after processing")
 
-    elif base_folder == CNIL_DATA_FOLDER:
+    elif CNIL_DATA_FOLDER.endswith(base_folder):
         try:
             all_dirs.remove("cnil")
             all_dirs.insert(0, "cnil")  # Placing the 'cnil' folder at the beginning
@@ -1307,10 +1311,12 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
                     f"Folder: {folder_to_remove} successfully removed after processing"
                 )
 
-    elif base_folder == CONSTIT_DATA_FOLDER:
+    elif CONSTIT_DATA_FOLDER.endswith(base_folder):
         try:
             all_dirs.remove("constit")
-            all_dirs.insert(0, "constit")  # Placing the 'cnil' folder at the beginning
+            all_dirs.insert(
+                0, "constit"
+            )  # Placing the 'constit' folder at the beginning
         except ValueError:
             logger.debug(f"There is no 'constit' directory in {base_folder}")
 
@@ -1367,7 +1373,7 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
                     f"Folder: {folder_to_remove} successfully removed after processing"
                 )
 
-    elif base_folder == DOLE_DATA_FOLDER:
+    elif DOLE_DATA_FOLDER.endswith(base_folder):
         try:
             all_dirs.remove("dole")
             all_dirs.insert(0, "dole")  # Placing the 'dole' folder at the beginning
@@ -1429,7 +1435,7 @@ def process_data(base_folder: str, model: str = "BAAI/bge-m3"):
                     f"Folder: {folder_to_remove} successfully removed after processing"
                 )
 
-    elif base_folder == LEGI_DATA_FOLDER:
+    elif base_folder.endswith(LEGI_DATA_FOLDER):
         try:
             all_dirs.remove("legi")
             all_dirs.insert(0, "legi")  # Placing the 'legi' folder at the beginning

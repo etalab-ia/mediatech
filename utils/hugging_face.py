@@ -5,6 +5,7 @@ from config import (
     get_logger,
     data_history_path,
     config_file_path,
+    BASE_PATH,
     SERVICE_PUBLIC_PRO_DATA_FOLDER,
     SERVICE_PUBLIC_PART_DATA_FOLDER,
 )
@@ -326,12 +327,12 @@ class HuggingFace:
                 config = json.load(file)
 
             for dataset_name, attributes in config.items():
-                if attributes.get("download_folder") in [
+                if os.path.join(BASE_PATH, attributes.get("download_folder")) in [
                     SERVICE_PUBLIC_PRO_DATA_FOLDER,
                     SERVICE_PUBLIC_PART_DATA_FOLDER,
                 ]:
                     dataset_name = "service_public"
-                file_path = f"data/parquet/{dataset_name.lower()}.parquet"
+                file_path = f"{BASE_PATH}/data/parquet/{dataset_name.lower()}.parquet"
                 if os.path.exists(file_path):
                     self.upload_dataset(
                         dataset_name=dataset_name.lower().replace("_", "-"),

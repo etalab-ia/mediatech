@@ -9,6 +9,7 @@ from .config import (
     SERVICE_PUBLIC_PART_DATA_FOLDER,
     DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER,
     DOLE_DATA_FOLDER,
+    BASE_PATH,
     parquet_files_folder,
     config_file_path,
     data_history_path,

@@ -565,15 +565,14 @@ class RagSource:
         #         raise ValueError("This RAG source is not known: %s" % source)
 
         sheets = []
-        if (
-            storage_dir == SERVICE_PUBLIC_PRO_DATA_FOLDER
-            or storage_dir == SERVICE_PUBLIC_PART_DATA_FOLDER
-        ):
+        if SERVICE_PUBLIC_PART_DATA_FOLDER.endswith(
+            storage_dir
+        ) or SERVICE_PUBLIC_PRO_DATA_FOLDER.endswith(storage_dir):
             # storage_dir: the base path where files are gonna be written.
             # target_dir: read-only base path where sheets are read.
             target_dir = f"{storage_dir}/{storage_dir.split('/')[-1]}"
             sheets.extend(_parse_xml(target_dir, "text", structured=structured))
-        elif storage_dir == TRAVAIL_EMPLOI_DATA_FOLDER:
+        elif TRAVAIL_EMPLOI_DATA_FOLDER.endswith(storage_dir):
             base_name = os.path.basename(storage_dir)
             target_dir = next(
                 (

@@ -1,0 +1,40 @@
+data/
+backups/
+
+logs/
+**/*.log
+
+venv/*
+.venv/
+
+config/data_history.json
+
+test.*
+test/
+nohup.out
+tmp/
+__pycache__/
+**/__pycache__/
+
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+**/*.egg-info/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Docker
+Dockerfile*
+docker-compose.*
+.dockerignore
+
+# Docs
+docs/
+
+# Airflow
+airflow/

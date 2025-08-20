@@ -39,7 +39,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     steps:
-    - name: Check lockfile on VM
+    - name: Check lockfile on VM (legacy)
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.VM_HOST }}
@@ -62,6 +62,32 @@ jobs:
           else
             echo "No collections update in progress, deploying..."
           fi
+    
+    - name: Check if DAGs are running
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          set -e
+          PROJECT_DIR="${{ secrets.VM_PROJECT_DIR }}"
+
+          if [ ! -d "$PROJECT_DIR" ]; then
+            echo "ERROR: Project directory not found: Please check the VM_PROJECT_DIR secret."
+            exit 1
+          fi
+          
+          cd "$PROJECT_DIR"
+
+          if [ -f scripts/check_running_dags.sh ]; then
+            sudo chmod +x scripts/check_running_dags.sh
+            ./scripts/check_running_dags.sh
+          else
+            echo "Running dags check script not found."
+            exit 1
+          fi
+
 
     - name: Code sync
       uses: appleboy/ssh-action@v1.0.0
@@ -88,10 +114,7 @@ jobs:
             exit 1
           fi
           
-          source .venv/bin/activate 2>/dev/null || python3 -m venv .venv && source .venv/bin/activate
-          pip install -e .
-
-    - name: System setup
+    - name: System setup (initial deployment)
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.VM_HOST }}
@@ -109,14 +132,20 @@ jobs:
           
           cd "$PROJECT_DIR"
 
-          if [ -f scripts/deployment_packages.sh ]; then
-            ./scripts/deployment_packages.sh
+          if ! command -v docker &> /dev/null; then
+            echo "Docker is not installed. Installing Docker..."
+            if [ -f scripts/initial_deployment.sh ]; then
+              sudo chmod +x scripts/initial_deployment.sh
+              ./scripts/initial_deployment.sh
+            else
+              echo "Initial deployment script not found."
+              exit 1
+            fi
           else
-            echo "Deployment script not found."
-            exit 1
+            echo "Docker detected. Skipping Docker installation."
           fi
     
-    - name: Container deployment
+    - name: Containers deployment
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.VM_HOST }}
@@ -134,11 +163,10 @@ jobs:
           
           cd "$PROJECT_DIR"
           
-          if [ -f docker-compose.yml ]; then
-            sudo docker compose down || true
-            sudo docker compose pull
-            sudo docker compose up -d
+          if [ -f scripts/containers_deployment.sh ]; then
+            sudo chmod +x scripts/containers_deployment.sh
+            ./scripts/containers_deployment.sh
           else
-            echo "docker-compose.yml not found."
+            echo "ERROR: scripts/containers_deployment.sh not found"
             exit 1
           fi

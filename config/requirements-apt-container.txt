@@ -1,0 +1,6 @@
+libpq-dev
+python3-dev
+curl
+git
+build-essential
+ca-certificates

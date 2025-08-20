@@ -13,4 +13,4 @@ done
 mediatech create_tables --model BAAI/bge-m3
 mediatech download_and_process_files --all --model BAAI/bge-m3
 mediatech export_tables
-mediatech upload_dataset --all 
+mediatech upload_dataset --all --repository AgentPublic

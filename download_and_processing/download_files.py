@@ -9,7 +9,7 @@ from utils import (
     remove_folder,
 )
 from .files_processing import process_data
-from config import get_logger
+from config import get_logger, BASE_PATH
 import os
 import requests
 import json
@@ -44,7 +44,7 @@ def download_and_optionally_process_files(
         attributes = config.get(data_name.lower(), {})
         if attributes.get("type") == "dila_folder":
             url = attributes.get("download_url", "")
-            download_folder = attributes.get("download_folder", "")
+            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
             try:
                 last_downloaded_file = log.get(data_name).get(
                     "last_downloaded_file", ""
@@ -137,15 +137,15 @@ def download_and_optionally_process_files(
                         logger.info(
                             f"Log config file successfully updated to {data_history_path}"
                         )
-
-                    # Remove the folder after processing
-                    remove_folder(folder_path=download_folder)
+                    if process:
+                        # Remove the folder after processing
+                        remove_folder(folder_path=download_folder)
 
             except Exception as e:
                 logger.error(f"Error downloading files: {e}")
 
         elif attributes.get("type") == "directory":
-            download_folder = attributes.get("download_folder", "")
+            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
             os.makedirs(download_folder, exist_ok=True)
 
             try:
@@ -251,7 +251,7 @@ def download_and_optionally_process_files(
 
         elif attributes.get("type") == "sheets":
             # Script based on the pyalbert.corpus.download_rag_sources function)
-            download_folder = attributes.get("download_folder", "")
+            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
 
             try:
                 last_download_date = log.get(data_name).get("last_download_date", "")
@@ -350,7 +350,7 @@ def download_and_optionally_process_files(
         elif attributes.get("type") == "data_gouv":
             logger.info(f"Downloading '{data_name}'...")
             url = attributes.get("download_url", "")
-            download_folder = attributes.get("download_folder", "")
+            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
             try:
                 last_downloaded_file = log.get(data_name).get(
                     "last_downloaded_file", ""

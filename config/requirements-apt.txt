@@ -1,5 +1,0 @@
-docker.io
-docker-compose-v2
-libpq-dev
-python3-dev
-curl
