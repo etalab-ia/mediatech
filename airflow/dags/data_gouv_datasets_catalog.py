@@ -26,7 +26,7 @@ with DAG(
         allowed_states=["success"],
         mode="reschedule",  # Reschedule mode to avoid blocking the scheduler
         timeout=7 * 24 * 60 * 60,  # Wait up to 7 days, after which the task will fail
-        poke_interval=600,  # Check every 10 minutes if the task has completed
+        poke_interval=120,  # Check every 2 minutes if the task has completed
     )
 
     create_tables = BashOperator(
