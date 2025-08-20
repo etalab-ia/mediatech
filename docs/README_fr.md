@@ -41,7 +41,13 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
     export $(grep -v '^#' .env | xargs)
     ```
 
-3.  Utilisez l'API d'Airflow pour obtenir la variable `JWT_TOKEN` :
+3. Assurez-vous de supprimer le volume PostgreSQL (PgVector) :
+    ```bash
+    docker compose down -v
+    ```
+    > ⚠️ Cette opération supprimera tous les volumes !
+
+4.  Utilisez l'API d'Airflow pour obtenir la variable `JWT_TOKEN` :
     ```bash
     curl -X 'POST' \
     'http://localhost:8080/auth/token' \
@@ -49,7 +55,7 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
     -d "{\"username\": \"${_AIRFLOW_WWW_USER_USERNAME}\", \"password\": \"${_AIRFLOW_WWW_USER_PASSWORD}\"}"
     ```
 
-4.  Définissez la variable `JWT_TOKEN` dans le fichier [`.env`](.env) avec le `access_token` obtenu.
+5.  Définissez la variable `JWT_TOKEN` dans le fichier [`.env`](.env) avec le `access_token` obtenu.
 
 #### Téléchargement, Traitement et Téléversement des Données
 
