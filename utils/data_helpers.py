@@ -271,11 +271,14 @@ def remove_file(file_path: str):
         logger.info(f"File {file_path} does not exist")
 
 
-def export_tables_to_parquet(output_folder: str = parquet_files_folder):
+def export_table_to_parquet(
+    table_name: str, output_folder: str = parquet_files_folder
+):
     """
     Exports all tables from the postgresql database to Parquet files by batches.
 
     Args:
+        table_name (str): The name of the table to export.
         output_folder (str): The path where the Parquet files will be saved.
 
     Returns:
@@ -291,15 +294,50 @@ def export_tables_to_parquet(output_folder: str = parquet_files_folder):
             AS postgres_db (TYPE postgres)
         """)
 
-        conn.execute(
-            "SELECT table_name FROM information_schema.tables where table_schema='public' AND table_type='BASE TABLE';"
-        )
-        tables = conn.fetchall()
-        tables = [table[0] for table in tables]
-        logger.info(f"Found {len(tables)} tables in the database: {tables}")
-        os.makedirs(output_folder, exist_ok=True)
+        if table_name == "all":
+            conn.execute(
+                "SELECT table_name FROM information_schema.tables where table_schema='public' AND table_type='BASE TABLE';"
+            )
+            tables = conn.fetchall()
+            tables = [table[0] for table in tables]
+            logger.info(f"Found {len(tables)} tables in the database: {tables}")
+            os.makedirs(output_folder, exist_ok=True)
 
-        for table_name in tables:
+            for table in tables:
+                try:
+                    # Get row count from table using SQL COUNT
+                    conn.execute(f"SELECT COUNT(*) FROM postgres_db.{table}")
+                    table_row_count = conn.fetchone()[0]
+
+                    if table_row_count == 0:
+                        logger.warning(f"No data found in table '{table}'")
+                        continue
+
+                    conn.execute(f"SELECT * FROM postgres_db.{table} LIMIT 1")
+
+                    output_path = os.path.join(output_folder, f"{table}.parquet")
+                    logger.info(
+                        f"Exporting {table_row_count} rows from table '{table}' to Parquet file: {output_path}"
+                    )
+
+                    # Export table to Parquet file
+                    conn.execute(
+                        f"COPY (SELECT * FROM postgres_db.{table}) TO '{output_path}' (FORMAT PARQUET, COMPRESSION 'LZ4',PARQUET_VERSION 'V1', ROW_GROUP_SIZE 50000)"
+                    )
+
+                    # Row count in the Parquet file
+                    parquet_row_count = conn.execute(
+                        f"SELECT COUNT(*) FROM read_parquet('{output_path}')"
+                    ).fetchone()[0]
+                    logger.info(
+                        f"Successfully exported table '{table}': {table_row_count} rows → {parquet_row_count} rows"
+                    )
+
+                except Exception as table_error:
+                    logger.error(f"Error processing table '{table}': {table_error}")
+                    continue
+        else:
+            os.makedirs(output_folder, exist_ok=True)
             try:
                 # Get row count from table using SQL COUNT
                 conn.execute(f"SELECT COUNT(*) FROM postgres_db.{table_name}")
@@ -307,8 +345,7 @@ def export_tables_to_parquet(output_folder: str = parquet_files_folder):
 
                 if table_row_count == 0:
                     logger.warning(f"No data found in table '{table_name}'")
-                    continue
-
+                    return
                 conn.execute(f"SELECT * FROM postgres_db.{table_name} LIMIT 1")
 
                 output_path = os.path.join(output_folder, f"{table_name}.parquet")
@@ -331,7 +368,7 @@ def export_tables_to_parquet(output_folder: str = parquet_files_folder):
 
             except Exception as table_error:
                 logger.error(f"Error processing table '{table_name}': {table_error}")
-                continue
+                return
 
     except Exception as e:
         logger.error(f"Error connecting to database or exporting tables: {e}")

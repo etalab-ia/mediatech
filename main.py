@@ -8,7 +8,7 @@ Usage:
     main.py create_tables [--model=<model_name>] [--delete-existing] [--debug]
     main.py process_files (--all | --source=<source>) [--folder=<path>] [--model=<model_name>] [--debug]
     main.py split_table (--source=<source>) [--debug]
-    main.py export_tables [--output=<path>] [--debug]
+    main.py export_table (--table=<name> | --all) [--output=<path>] [--debug]
     main.py upload_dataset (--all | --dataset-name=<name>) [--input=<path>] [--repository=<name>] [--private] [--debug]
     main.py -h | --help
 
@@ -18,7 +18,7 @@ Commands:
     create_tables               Create database tables (with option to delete existing ones)
     process_files               Process data from specific source or all sources and insert into database
     split_table                 Split a table into multiple smaller tables based on source and criteria
-    export_tables               Export tables to Parquet files
+    export_table                Export table to Parquet files
     upload_dataset              Upload dataset to Hugging Face
 
 Options:
@@ -46,7 +46,8 @@ Examples:
     main.py process_files --source service_public --model BAAI/bge-m3
     main.py process_files --all --folder data/unprocessed --model BAAI/bge-m3
     main.py split_table --source legi
-    main.py export_tables --output data/parquet
+    main.py export_table --table legi
+    main.py export_table --all --output data/parquet
     main.py upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public --repository AgentPublic --private
     main.py upload_dataset --all --repository AgentPublic
 """
@@ -80,7 +81,7 @@ from download_and_processing import (
     download_and_optionally_process_files,
     download_and_optionally_process_all_files,
 )
-from utils import export_tables_to_parquet
+from utils import export_table_to_parquet
 
 
 def main():
@@ -250,10 +251,20 @@ def main():
                 return 1
 
         # Export tables to parquet
-        elif args["export_tables"]:
+        elif args["export_table"]:
             output = args["--output"] or parquet_files_folder
-            logger.info(f"Exporting tables to Parquet in folder: {output}")
-            export_tables_to_parquet(output_folder=output)
+            if args["--all"]:
+                logger.info(
+                    f"Exporting all PgVector tables to Parquet in folder: {output}"
+                )
+                export_table_to_parquet(table_name="all", output_folder=output)
+            else:
+                logger.info(
+                    f"Exporting {args['--table']} table to Parquet in folder: {output}"
+                )
+                export_table_to_parquet(
+                    table_name=args["--table"], output_folder=output
+                )
 
         # Upload dataset to Hugging Face
         elif args["upload_dataset"]:

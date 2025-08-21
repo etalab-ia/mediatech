@@ -39,8 +39,8 @@ with DAG(
         bash_command="mediatech download_and_process_files --source state_administrations_directory --model BAAI/bge-m3",
     )
 
-    export_tables = BashOperator(
-        task_id="export_tables", bash_command="mediatech export_tables"
+    export_table = BashOperator(
+        task_id="export_table", bash_command="mediatech export_table --table state_administrations_directory"
     )
 
     upload_dataset = BashOperator(
@@ -52,6 +52,6 @@ with DAG(
         wait_for_legi
         >> create_tables
         >> download_and_process_files
-        >> export_tables
+        >> export_table
         >> upload_dataset
     )

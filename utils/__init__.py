@@ -12,7 +12,7 @@ from .data_helpers import (
     make_schedule,
     remove_folder,
     remove_file,
-    export_tables_to_parquet,
+    export_table_to_parquet,
     load_experiences,
     load_sheets,
     extract_and_remove_tar_files,

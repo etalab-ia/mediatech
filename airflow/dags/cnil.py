@@ -28,8 +28,8 @@ with DAG(
         bash_command="mediatech download_and_process_files --source cnil --model BAAI/bge-m3",
     )
 
-    export_tables = BashOperator(
-        task_id="export_tables", bash_command="mediatech export_tables"
+    export_table = BashOperator(
+        task_id="export_table", bash_command="mediatech export_table --table cnil"
     )
 
     upload_dataset = BashOperator(
@@ -37,4 +37,4 @@ with DAG(
         bash_command="mediatech upload_dataset --dataset-name cnil",
     )
 
-    create_tables >> download_and_process_files >> export_tables >> upload_dataset
+    create_tables >> download_and_process_files >> export_table >> upload_dataset

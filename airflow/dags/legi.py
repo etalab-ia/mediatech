@@ -38,8 +38,8 @@ with DAG(
         bash_command="mediatech download_and_process_files --source legi --model BAAI/bge-m3",
     )
 
-    export_tables = BashOperator(
-        task_id="export_tables", bash_command="mediatech export_tables"
+    export_table = BashOperator(
+        task_id="export_table", bash_command="mediatech export_table --table legi"
     )
 
     upload_dataset = BashOperator(
@@ -51,6 +51,6 @@ with DAG(
         wait_for_dole
         >> create_tables
         >> download_and_process_files
-        >> export_tables
+        >> export_table
         >> upload_dataset
     )
