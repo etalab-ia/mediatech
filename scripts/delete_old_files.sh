@@ -77,3 +77,15 @@ if [ -d "$CONFIG_BACKUP_FOLDER" ]; then
 else
 	log "WARNING" "Configuration backup folder $CONFIG_BACKUP_FOLDER does not exist." 
 fi
+
+# Docker Cleanup
+log "INFO" "Starting Docker cleanup..."
+if command -v docker &> /dev/null; then
+    # Clean up dangling build cache
+    log "INFO" "Pruning Docker builder cache..."
+    sudo docker builder prune -f
+
+    log "INFO" "Docker cleanup finished."
+else
+    log "WARNING" "Docker command not found. Skipping Docker cleanup."
+fi

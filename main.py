@@ -289,8 +289,8 @@ def main():
                     if args["--input"]
                     else os.path.join(
                         parquet_files_folder,
-                        f"{dataset_name.lower().replace('-', '_')}.parquet",
-                    )  # Default path for the dataset (e.g., ./data/parquet/service_public.parquet)
+                        f"{dataset_name.lower()}",
+                    )  # Default folder path for the dataset (e.g., ./data/parquet/service_public)
                 )
                 repository = (
                     args["--repository"] if args["--repository"] else "AgentPublic"
@@ -302,7 +302,7 @@ def main():
                 )
                 hf = HuggingFace(hugging_face_repo=repository, token=HF_TOKEN)
                 hf.upload_dataset(
-                    dataset_name=dataset_name, file_path=input_path, private=private
+                    dataset_name=dataset_name, local_folder_path=input_path, private=private
                 )
 
         return 0

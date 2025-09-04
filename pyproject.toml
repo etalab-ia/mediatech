@@ -22,7 +22,7 @@ dependencies = [
     "qdrant-client==1.14.2",
     "langchain==0.3.25",
     "lxml==5.4.0",
-    "huggingface-hub==0.32.6",
+    "huggingface-hub==0.34.4",
     "docopt==0.6.2",
     "unidecode==1.4.0",
     "pandas==2.2.3",
