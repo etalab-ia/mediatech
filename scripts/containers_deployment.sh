@@ -63,17 +63,23 @@ log "INFO" "========================================="
 log "INFO" "Step 2: Building and deploying containers"
 log "INFO" "========================================="
 
-# Vérifier si le container airflow-init existe déjà (existe et a tourné)
 if [ -n "$(sudo docker ps -a --filter "name=airflow-init" --format '{{.Names}}')" ]; then
     log "INFO" "Container airflow-init already exists. Skipping airflow-init step."
     log "INFO" "Forcing rebuild without cache to ensure code is up-to-date."
-    log "INFO" "Running: docker compose up -d --build --no-cache --remove-orphans"
-    if sudo docker compose up -d --build --no-cache --remove-orphans 2>&1 | tee -a "$LOG_FILE"; then
-        log "INFO" "Container deployment successful"
-    else
+    
+    log "INFO" "Running: docker compose build --no-cache"
+    if ! sudo docker compose build --no-cache 2>&1 | tee -a "$LOG_FILE"; then
+        log "ERROR" "Build failed"
+        exit 1
+    fi
+    log "INFO" "Build successful"
+
+    log "INFO" "Running: docker compose up -d --remove-orphans"
+    if ! sudo docker compose up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"; then
         log "ERROR" "Container deployment failed"
         exit 1
     fi
+    log "INFO" "Container deployment successful"
 else
     log "INFO" "Container 'airflow-init' not found. Running initialization steps."
     log "INFO" "Running: docker compose build --no-cache"
