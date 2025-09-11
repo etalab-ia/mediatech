@@ -81,6 +81,20 @@ class CorpusHandler(ABC):
 
 class SheetChunksHandler(CorpusHandler):
     def doc_to_chunk(self, doc: dict) -> str | None:
+        """Converts a document dictionary into a single formatted string.
+
+        This method combines the title, context, introduction, and text fields
+        from a document dictionary into a unified string. It intelligently includes
+        the introduction only if it is not already part of the main text to
+        avoid redundancy.
+
+        Args:
+            doc (dict): A dictionary representing a document. Expected keys include
+                'title', 'text', and optionally 'context' and 'introduction'.
+
+        Returns:
+            str: A single string representing the formatted document chunk.
+        """
         context = ""
         if doc.get("context"):
             context = "  ( > ".join(doc["context"]) + ")"
@@ -274,7 +288,7 @@ def make_chunks_sheets(
             "You must give a datas directory to chunkify in the param 'storage_dir'."
         )
 
-    sheets = RagSource.get_sheets(storage_dir, structured=structured)
+    sheets = RagSource.get_sheets(storage_dir, structured=structured) # list of dicts built from XML files
 
     chunks = []
     text_splitter = RecursiveCharacterTextSplitter(
@@ -321,7 +335,7 @@ def make_chunks_sheets(
                     "text": fragment,  # overwrite previous value
                 }
 
-                chunk["chunk_text"] = doc_to_chunk(doc=chunk)
+                chunk["chunk_text"] = doc_to_chunk(doc=chunk) # concatenate title, context, (intro if not in text) and text
                 if isinstance(natural_chunk, dict) and "context" in natural_chunk:
                     chunk["context"] = natural_chunk["context"]
                     chunk_content = "".join(chunk["context"]) + fragment
@@ -331,8 +345,7 @@ def make_chunks_sheets(
                 # add an unique hash/id
                 h = hashlib.blake2b(chunk_content.encode(), digest_size=8).hexdigest()
                 if h in hashes:
-                    # print("Warning: duplicate chunk (%s)" % chunk["sid"])
-                    # print(chunk_content)
+                    logger.debug(f"Warning: duplicate chunk => {chunk['sid']} : {chunk_content}")
                     continue
                 hashes.append(h)
                 chunk["hash"] = h

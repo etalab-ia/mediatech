@@ -65,7 +65,12 @@ def extract_all(soup: Tag, tag: str, pop=True) -> list[str]:
 # ***************
 
 
-def _get_xml_files(path):
+def _get_xml_files(path) -> list[str]:
+    """Return sorted list of XML file paths.
+
+    If `path` is a file returns [path]. If a directory, walk it and include files
+    that end with '.xml' and start with 'N' or 'F'.
+    """
     xml_files = []
 
     if os.path.isfile(path):
@@ -82,7 +87,24 @@ def _get_xml_files(path):
     return sorted(xml_files)
 
 
-def _get_metadata(soup):
+def _get_metadata(soup) -> dict:
+    """
+    Extract metadata fields from a BeautifulSoup-parsed document.
+
+    Parameters:
+        soup (bs4.BeautifulSoup): Parsed XML/HTML document containing publication metadata.
+
+    Returns:
+        dict: Metadata with keys:
+            - url (str): Publication 'spUrl' attribute if present, else empty string.
+            - audience (str): Comma-separated values from all 'Audience' elements.
+            - theme (str): Comma-separated values from all 'Theme' elements.
+            - surtitle (str): Value from 'SurTitre'.
+            - subject (str): Value from 'dc:subject'.
+            - title (str): Value from 'dc:title'.
+            - description (str): Value from 'dc:description'.
+            - introduction (str): Value from 'Introduction' or falls back to description if empty.
+    """
     url = ""
     if soup.find("Publication") is not None:
         if "spUrl" in soup.find("Publication").attrs:
@@ -301,7 +323,11 @@ def _parse_xml_text_structured(
     return state
 
 
-def _parse_xml_text(xml_file, structured=False) -> dict:
+def _parse_xml_text(xml_file:str, structured:bool=False) -> dict:
+    """Parse a service-public XML file and return a normalized dict.
+
+    If structured=True preserves sections; otherwise returns flattened text.
+    """
     with open(xml_file, mode="r", encoding="utf-8") as f:
         soup = BeautifulSoup(f, "xml")
 
@@ -484,14 +510,14 @@ def _parse_xml(
             logger.debug(f"Processing sheet: {current_pct}%\r", end="")
 
         if parse_type == "text":
-            doc = _parse_xml_text(xml_file, structured=structured)
+            doc = _parse_xml_text(xml_file, structured=structured) # returns dict
             if doc:
                 docs.append(doc)
         elif parse_type == "questions":
             _docs = _parse_xml_questions(xml_file)
             docs.extend(_docs)
 
-    return docs
+    return docs # list of dicts
 
 
 def _parse_travailEmploi(target_dir: str, structured: bool = False) -> list[dict]:
