@@ -2,7 +2,7 @@ from openai import OpenAI
 import numpy as np
 import os
 import json
-import hashlib
+import xxhash
 import time
 import re
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -137,7 +137,10 @@ def generate_embeddings(
 
 
 def generate_embeddings_with_retry(
-    data: str | list[str], attempts: int = 5, model: str = "BAAI/bge-m3", time_sleep: int = 60
+    data: str | list[str],
+    attempts: int = 5,
+    model: str = "BAAI/bge-m3",
+    time_sleep: int = 60,
 ) -> list[float]:
     """
     Generate embeddings for the provided data with retry mechanism.
@@ -288,7 +291,9 @@ def make_chunks_sheets(
             "You must give a datas directory to chunkify in the param 'storage_dir'."
         )
 
-    sheets = RagSource.get_sheets(storage_dir, structured=structured) # list of dicts built from XML files
+    sheets = RagSource.get_sheets(
+        storage_dir, structured=structured
+    )  # list of dicts built from XML files
 
     chunks = []
     text_splitter = RecursiveCharacterTextSplitter(
@@ -335,20 +340,24 @@ def make_chunks_sheets(
                     "text": fragment,  # overwrite previous value
                 }
 
-                chunk["chunk_text"] = doc_to_chunk(doc=chunk) # concatenate title, context, (intro if not in text) and text
-                if isinstance(natural_chunk, dict) and "context" in natural_chunk:
-                    chunk["context"] = natural_chunk["context"]
-                    chunk_content = "".join(chunk["context"]) + fragment
-                else:
-                    chunk_content = fragment
+                chunk["chunk_text"] = doc_to_chunk(
+                    doc=chunk
+                )  # concatenate title, context, (intro if not in text) and text
 
-                # add an unique hash/id
-                h = hashlib.blake2b(chunk_content.encode(), digest_size=8).hexdigest()
+                chunk["context"] = (
+                    natural_chunk["context"] if isinstance(natural_chunk, dict) else []
+                )
+
+                # add an unique hash
+                h = xxhash.xxh64(chunk["chunk_text"].encode(), seed=2025).hexdigest()
+
                 if h in hashes:
-                    logger.debug(f"Warning: duplicate chunk => {chunk['sid']} : {chunk_content}")
+                    logger.debug(
+                        f"Warning: duplicate chunk => {chunk['sid']} : {chunk['chunk_text'][:100]}..."
+                    )
                     continue
                 hashes.append(h)
-                chunk["hash"] = h
+                chunk["chunk_xxh64"] = h
 
                 chunks.append(chunk)
                 index += 1

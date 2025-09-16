@@ -126,6 +126,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         CREATE TABLE {table_name.upper()} (
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             types TEXT,
                             name TEXT,
                             mission_description TEXT,
@@ -157,6 +158,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
                             chunk_index INTEGER NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             title TEXT,
                             surtitle TEXT,
                             source TEXT,
@@ -176,6 +178,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
                             chunk_index INTEGER NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             audience TEXT,
                             theme TEXT,
                             title TEXT,
@@ -198,7 +201,8 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         CREATE TABLE CNIL (
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
-                            chunk_number INTEGER NOT NULL,
+                            chunk_index INTEGER NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             nature TEXT,
                             status TEXT,
                             nature_delib TEXT,
@@ -218,7 +222,8 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         CREATE TABLE CONSTIT (
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
-                            chunk_number INTEGER NOT NULL,
+                            chunk_index INTEGER NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             nature TEXT,
                             solution TEXT,
                             title TEXT,
@@ -236,7 +241,8 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         CREATE TABLE DOLE (
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
-                            chunk_number INTEGER NOT NULL,
+                            chunk_index INTEGER NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             category TEXT,
                             content_type TEXT,
                             title TEXT,
@@ -258,7 +264,8 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         CREATE TABLE LEGI (
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT NOT NULL,
-                            chunk_number INTEGER NOT NULL,
+                            chunk_index INTEGER NOT NULL,
+                            chunk_xxh64 TEXT NOT NULL,
                             nature TEXT,
                             category TEXT,
                             ministry TEXT,
@@ -282,6 +289,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         CREATE TABLE DATA_GOUV_DATASETS_CATALOG (
                             chunk_id TEXT PRIMARY KEY,
                             doc_id TEXT,
+                            chunk_xxh64 TEXT NOT NULL,
                             title TEXT,
                             acronym TEXT,
                             url TEXT,
@@ -590,10 +598,11 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
 
         if table_name.lower().endswith("directory"):
             insert_query = f"""
-                INSERT INTO {table_name.upper()} (chunk_id, doc_id, types, name, mission_description, addresses, phone_numbers, mails, urls, social_medias, mobile_applications, opening_hours, contact_forms, additional_information, modification_date, siret, siren, people_in_charge, organizational_chart, hierarchy, directory_url, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO {table_name.upper()} (chunk_id, doc_id, chunk_xxh64, types, name, mission_description, addresses, phone_numbers, mails, urls, social_medias, mobile_applications, opening_hours, contact_forms, additional_information, modification_date, siret, siren, people_in_charge, organizational_chart, hierarchy, directory_url, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 types = EXCLUDED.types,
                 name = EXCLUDED.name,
                 mission_description = EXCLUDED.mission_description,
@@ -619,11 +628,12 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
 
         elif table_name.lower() == "travail_emploi":
             insert_query = f"""
-                INSERT INTO TRAVAIL_EMPLOI (chunk_id, doc_id, chunk_index, title, surtitle, source, introduction, date, url, context, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO TRAVAIL_EMPLOI (chunk_id, doc_id, chunk_index, chunk_xxh64, title, surtitle, source, introduction, date, url, context, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
                 chunk_index = EXCLUDED.chunk_index,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 title = EXCLUDED.title,
                 surtitle = EXCLUDED.surtitle,
                 source = EXCLUDED.source,
@@ -637,11 +647,12 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "service_public":
             insert_query = f"""
-                INSERT INTO SERVICE_PUBLIC (chunk_id, doc_id, chunk_index, audience, theme, title, surtitle, source, introduction, url, related_questions, web_services, context, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO SERVICE_PUBLIC (chunk_id, doc_id, chunk_index, chunk_xxh64, audience, theme, title, surtitle, source, introduction, url, related_questions, web_services, context, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
                 chunk_index = EXCLUDED.chunk_index,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 audience = EXCLUDED.audience,
                 theme = EXCLUDED.theme,
                 title = EXCLUDED.title,
@@ -658,11 +669,12 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "cnil":
             insert_query = f"""
-                INSERT INTO CNIL (chunk_id, doc_id, chunk_number, nature, status, nature_delib, title, full_title, number, date, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO CNIL (chunk_id, doc_id, chunk_index, chunk_xxh64, nature, status, nature_delib, title, full_title, number, date, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
-                chunk_number = EXCLUDED.chunk_number,
+                chunk_index = EXCLUDED.chunk_index,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 nature = EXCLUDED.nature,
                 status = EXCLUDED.status,
                 nature_delib = EXCLUDED.nature_delib,
@@ -676,11 +688,12 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "constit":
             insert_query = f"""
-                INSERT INTO CONSTIT (chunk_id, doc_id, chunk_number, nature, solution, title, number, decision_date, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO CONSTIT (chunk_id, doc_id, chunk_index, chunk_xxh64, nature, solution, title, number, decision_date, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
-                chunk_number = EXCLUDED.chunk_number,
+                chunk_index = EXCLUDED.chunk_index,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 nature = EXCLUDED.nature,
                 solution = EXCLUDED.solution,
                 title = EXCLUDED.title,
@@ -692,11 +705,12 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "dole":
             insert_query = f"""
-                INSERT INTO DOLE (chunk_id, doc_id, chunk_number, category, content_type, title, number, wording, creation_date, article_number, article_title, article_synthesis, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO DOLE (chunk_id, doc_id, chunk_index, chunk_xxh64, category, content_type, title, number, wording, creation_date, article_number, article_title, article_synthesis, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
-                chunk_number = EXCLUDED.chunk_number,
+                chunk_index = EXCLUDED.chunk_index,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 category = EXCLUDED.category,
                 content_type = EXCLUDED.content_type,
                 title = EXCLUDED.title,
@@ -713,11 +727,12 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
 
         elif table_name.lower() == "legi":
             insert_query = f"""
-                INSERT INTO LEGI (chunk_id, doc_id, chunk_number, nature, category, ministry, status, title, full_title, subtitles, number, start_date, end_date, nota, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO LEGI (chunk_id, doc_id, chunk_index, chunk_xxh64, nature, category, ministry, status, title, full_title, subtitles, number, start_date, end_date, nota, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
-                chunk_number = EXCLUDED.chunk_number,
+                chunk_index = EXCLUDED.chunk_index,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 nature = EXCLUDED.nature,
                 category = EXCLUDED.category,
                 ministry = EXCLUDED.ministry,
@@ -735,10 +750,11 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         elif table_name.lower() == "data_gouv_datasets_catalog":
             insert_query = f"""
-                INSERT INTO DATA_GOUV_DATASETS_CATALOG (chunk_id, doc_id, title, acronym, url, organization, organization_id, owner, owner_id, description, frequency, license, temporal_coverage_start, temporal_coverage_end, spatial_granularity, spatial_zones, featured, created_at, last_modified, tags, archived, resources_count, main_resources_count, resources_formats, harvest_backend, harvest_domain, harvest_created_at, harvest_modified_at, harvest_remote_url, quality_score, metric_discussions, metric_reuses, metric_reuses_by_months, metric_followers, metric_followers_by_months, metric_views, metric_resources_downloads, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO DATA_GOUV_DATASETS_CATALOG (chunk_id, doc_id, chunk_xxh64, title, acronym, url, organization, organization_id, owner, owner_id, description, frequency, license, temporal_coverage_start, temporal_coverage_end, spatial_granularity, spatial_zones, featured, created_at, last_modified, tags, archived, resources_count, main_resources_count, resources_formats, harvest_backend, harvest_domain, harvest_created_at, harvest_modified_at, harvest_remote_url, quality_score, metric_discussions, metric_reuses, metric_reuses_by_months, metric_followers, metric_followers_by_months, metric_views, metric_resources_downloads, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
+                chunk_xxh64 = EXCLUDED.chunk_xxh64,
                 title = EXCLUDED.title,
                 acronym = EXCLUDED.acronym,
                 url = EXCLUDED.url,
@@ -934,7 +950,7 @@ def sync_obsolete_doc_ids(table_name: str, old_doc_ids: list, new_doc_ids: list)
     Synchronizes a table by deleting rows with obsolete document ids.
 
     This function compares the provided lists of old_doc_ids and new_doc_ids against all existing document ids in the table.
-    Any document id present in the table but not in the new list is considered obsolete and all its corresponding 
+    Any document id present in the table but not in the new list is considered obsolete and all its corresponding
     rows are deleted in a single, efficient operation.
 
     Args:
@@ -977,7 +993,6 @@ def sync_obsolete_doc_ids(table_name: str, old_doc_ids: list, new_doc_ids: list)
             logger.info(
                 f"Found {len(doc_ids_to_delete)} obsolete document ids to delete."
             )
-            logger.info(doc_ids_to_delete)
             delete_query = f"DELETE FROM {table_name.upper()} WHERE doc_id IN %s;"
             cursor.execute(delete_query, (tuple(doc_ids_to_delete),))
             conn.commit()

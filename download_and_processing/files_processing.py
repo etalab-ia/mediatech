@@ -6,6 +6,7 @@ import psycopg2
 from datetime import datetime
 from openai import PermissionDeniedError
 from tqdm import tqdm
+import xxhash
 
 from database import insert_data, remove_data, sync_obsolete_doc_ids
 from config import (
@@ -104,6 +105,10 @@ def process_data_gouv_files(target_dir: str, model: str = "BAAI/bge-m3"):
                 0
             ]  # Only keep the first chunks because a too long description is not interesting for this kind of dataset
 
+            chunk_xxh64 = xxhash.xxh64(
+                chunk_text.encode("utf-8"), seed=2025
+            ).hexdigest()
+
             embeddings = generate_embeddings_with_retry(
                 data=chunk_text, attempts=5, model=model
             )[0]
@@ -113,6 +118,7 @@ def process_data_gouv_files(target_dir: str, model: str = "BAAI/bge-m3"):
             new_data = (
                 row.get("id"),  # Primary key (chunk_id)
                 doc_id,
+                chunk_xxh64,  # Hash of chunk_text
                 row.get("title", None),
                 row.get("acronym", None),
                 row.get("url", None),
@@ -425,6 +431,8 @@ def process_directories(
             adresses=addresses,
         )
 
+        chunk_xxh64 = xxhash.xxh64(chunk_text.encode("utf-8"), seed=2025).hexdigest()
+
         embeddings = generate_embeddings_with_retry(
             data=chunk_text, attempts=5, model=model
         )[0]
@@ -437,6 +445,7 @@ def process_directories(
         new_data = (
             chunk_id,
             doc_id,
+            chunk_xxh64,  # Hash of chunk_text
             types,
             name,
             mission_description,
@@ -502,7 +511,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                     root = tree.getroot()
                     status = root.find(".//ETAT").text
                     if status in ["VIGUEUR", "ABROGE_DIFF"]:
-                        cid = root.find(".//ID").text
+                        cid = root.find(".//ID").text  # doc_id
                         nature = root.find(".//NATURE").text
                         title = (
                             root.find(".//CONTEXTE//TEXTE//TITRE_TXT")
@@ -562,7 +571,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                         )
                         data_to_insert = []
 
-                        for chunk_number, text in enumerate(chunks):
+                        for chunk_index, text in enumerate(chunks):
                             try:
                                 chunk_text = f"{full_title}"
                                 if number:
@@ -574,15 +583,20 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                         chunk_text += f"\n{context}"  # Augment the chunk text with subtitles concepts
                                 chunk_text += f"\n{text}"
 
+                                chunk_xxh64 = xxhash.xxh64(
+                                    chunk_text.encode("utf-8"), seed=2025
+                                ).hexdigest()
+
                                 embeddings = generate_embeddings_with_retry(
                                     data=chunk_text, attempts=5, model=model
                                 )[0]
-                                chunk_id = f"{cid}_{chunk_number}"  # Unique ID for each chunk, starting from 0
+                                chunk_id = f"{cid}_{chunk_index}"  # Unique ID for each chunk, starting from 0
 
                                 new_data = (
                                     chunk_id,  # Primary key
                                     cid,  # Original document ID
-                                    chunk_number,  # Chunk number
+                                    chunk_index,  # Chunk number
+                                    chunk_xxh64,  # Hash of chunk_text
                                     nature,
                                     category,
                                     ministry,
@@ -601,7 +615,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                 data_to_insert.append(new_data)
                             except PermissionDeniedError as e:
                                 logger.error(
-                                    f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                    f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                                 )
                                 raise
 
@@ -659,20 +673,25 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                         )
                         data_to_insert = []
 
-                        for chunk_number, text in enumerate(chunks):
+                        for chunk_index, text in enumerate(chunks):
                             try:
                                 chunk_text = f"{title}\n{text}"
+
+                                chunk_xxh64 = xxhash.xxh64(
+                                    chunk_text.encode("utf-8"), seed=2025
+                                ).hexdigest()
 
                                 embeddings = generate_embeddings_with_retry(
                                     data=chunk_text, attempts=5, model=model
                                 )[0]
 
-                                chunk_id = f"{cid}_{chunk_number}"  # Unique ID for each chunk, starting from 0
+                                chunk_id = f"{cid}_{chunk_index}"  # Unique ID for each chunk, starting from 0
 
                                 new_data = (
                                     chunk_id,  # Primary key
                                     cid,  # Original document ID
-                                    chunk_number,  # Chunk number
+                                    chunk_index,  # Chunk number
+                                    chunk_xxh64,  # Hash of chunk_text
                                     nature,
                                     status,
                                     nature_delib,
@@ -687,7 +706,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                 data_to_insert.append(new_data)
                             except PermissionDeniedError as e:
                                 logger.error(
-                                    f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                    f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                                 )
                                 raise
 
@@ -739,20 +758,25 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                     )
                     data_to_insert = []
 
-                    for chunk_number, text in enumerate(chunks):
+                    for chunk_index, text in enumerate(chunks):
                         try:
                             chunk_text = f"{title}\n{text}"
+
+                            chunk_xxh64 = xxhash.xxh64(
+                                chunk_text.encode("utf-8"), seed=2025
+                            ).hexdigest()
 
                             embeddings = generate_embeddings_with_retry(
                                 data=chunk_text, attempts=5, model=model
                             )[0]
 
-                            chunk_id = f"{cid}_{chunk_number}"  # Unique ID for each chunk, starting from 0
+                            chunk_id = f"{cid}_{chunk_index}"  # Unique ID for each chunk, starting from 0
 
                             new_data = (
                                 chunk_id,  # Primary key
                                 cid,  # Original document ID
-                                chunk_number,  # Chunk number
+                                chunk_index,  # Chunk number
+                                chunk_xxh64,  # Hash of chunk_text
                                 nature,
                                 solution,
                                 title,
@@ -765,7 +789,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                             data_to_insert.append(new_data)
                         except PermissionDeniedError as e:
                             logger.error(
-                                f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                             )
                             raise
 
@@ -784,7 +808,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                 try:
                     tree = ET.parse(file_path)
                     root = tree.getroot()
-                    cid = root.find(".//ID").text
+                    cid = root.find(".//ID").text  # doc_id
                     title = root.find(".//TITRE").text
                     number = root.find(".//NUMERO").text
                     category = root.find(".//TYPE").text
@@ -822,13 +846,17 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                             embeddings = generate_embeddings_with_retry(
                                 data=chunk_text, attempts=5, model="BAAI/bge-m3"
                             )[0]
-                            chunk_number = 0
+                            chunk_index = 0
                             content_type = "explanatory_memorandum"
-                            chunk_id = f"{cid}_{chunk_number}"
+                            chunk_id = f"{cid}_{chunk_index}"
+                            chunk_xxh64 = xxhash.xxh64(
+                                chunk_text.encode("utf-8"), seed=2025
+                            ).hexdigest()
                             new_data = (
                                 chunk_id,
-                                cid,
-                                chunk_number,
+                                cid,  # doc_id
+                                chunk_index,
+                                chunk_xxh64,  # Hash of chunk_text
                                 category,
                                 content_type,
                                 title,
@@ -846,11 +874,11 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
 
                         except PermissionDeniedError as e:
                             logger.error(
-                                f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                             )
                             raise
                     else:
-                        for chunk_number, text in enumerate(chunks):
+                        for chunk_index, text in enumerate(chunks):
                             try:
                                 chunk_text = (title + "\n" + text).replace(
                                     "\n\n", "\n"
@@ -859,12 +887,17 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                     data=chunk_text, attempts=5, model="BAAI/bge-m3"
                                 )[0]
                                 content_type = "explanatory_memorandum"
-                                chunk_id = f"{cid}_{chunk_number}"
+                                chunk_id = f"{cid}_{chunk_index}"
+
+                                chunk_xxh64 = xxhash.xxh64(
+                                    chunk_text.encode("utf-8"), seed=2025
+                                ).hexdigest()
 
                                 new_data = (
                                     chunk_id,
-                                    cid,
-                                    chunk_number,
+                                    cid,  # doc_id
+                                    chunk_index,
+                                    chunk_xxh64,  # Hash of chunk_text
                                     category,
                                     content_type,
                                     title,
@@ -882,7 +915,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
 
                             except PermissionDeniedError as e:
                                 logger.error(
-                                    f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                    f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                                 )
                                 raise
 
@@ -1035,11 +1068,11 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                 text=chunk_text, chunk_size=8000, chunk_overlap=400
                             )
 
-                            for chunk_number, text in enumerate(chunks):
-                                chunk_id = f"{cid}_{chunk_number}"  # Unique ID for each chunk, starting from 0
+                            for chunk_index, text in enumerate(chunks):
+                                chunk_id = f"{cid}_{chunk_index}"  # Unique ID for each chunk, starting from 0
 
                                 if (
-                                    chunk_number == 0
+                                    chunk_index == 0
                                 ):  # Because the first chunk always contains the article number
                                     chunk_text = f"{title}\n{text}"
                                 else:
@@ -1048,14 +1081,19 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                     else:
                                         chunk_text = f"{title}\n{text}"
                                 try:
+                                    chunk_xxh64 = xxhash.xxh64(
+                                        chunk_text.encode("utf-8"), seed=2025
+                                    ).hexdigest()
+
                                     embeddings = generate_embeddings_with_retry(
                                         data=chunk_text, attempts=5, model="BAAI/bge-m3"
                                     )[0]
 
                                     new_data = (
                                         chunk_id,
-                                        cid,
-                                        chunk_number,
+                                        cid,  # doc_id
+                                        chunk_index,
+                                        chunk_xxh64,  # Hash of chunk_text
                                         category,
                                         content_type,
                                         title,
@@ -1073,13 +1111,13 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
 
                                 except PermissionDeniedError as e:
                                     logger.error(
-                                        f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                        f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                                     )
                                     raise
 
                         else:  # The chunks will be created by classic chunking
-                            chunk_number = result_number
-                            chunk_id = f"{cid}_{chunk_number}"  # Unique ID for each chunk, starting from 0
+                            chunk_index = result_number
+                            chunk_id = f"{cid}_{chunk_index}"  # Unique ID for each chunk, starting from 0
                             content_type = "dossier_content"
                             chunks = []  # As it is impossible to have an article synthesis without an article number
 
@@ -1096,14 +1134,20 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
                                     chunk_text = (title + "\n" + text).replace(
                                         "\n\n", "\n"
                                     )  # Adding the title to the chunk text
+
+                                    chunk_xxh64 = xxhash.xxh64(
+                                        chunk_text.encode("utf-8"), seed=2025
+                                    ).hexdigest()
+
                                     embeddings = generate_embeddings_with_retry(
                                         data=chunk_text, attempts=5, model="BAAI/bge-m3"
                                     )[0]
 
                                     new_data = (
                                         chunk_id,
-                                        cid,
-                                        chunk_number,
+                                        cid,  # doc_id
+                                        chunk_index,
+                                        chunk_xxh64,  # Hash of chunk_text
                                         category,
                                         content_type,
                                         title,
@@ -1121,7 +1165,7 @@ def process_dila_xml_files(target_dir: str, model: str = "BAAI/bge-m3"):
 
                                 except PermissionDeniedError as e:
                                     logger.error(
-                                        f"PermissionDeniedError (API key issue) for chunk {chunk_number} of file {file_path}: {e}"
+                                        f"PermissionDeniedError (API key issue) for chunk {chunk_index} of file {file_path}: {e}"
                                     )
                                     raise
 
@@ -1186,16 +1230,17 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
             data_to_insert = []
 
             for document, embeddings in zip(batch_documents, batch_embeddings):
-                chunk_id = document["hash"].encode("utf8").hex()
                 doc_id = document["sid"]
                 chunk_index = document["chunk_index"]
+                chunk_id = f"{doc_id}_{chunk_index}"
+                chunk_xxh64 = document["chunk_xxh64"]  # Hash of chunk_text
                 title = document["title"]
                 surtitle = document["surtitle"]
                 source = document["source"]
                 introduction = document["introduction"]
                 date = document["date"]
                 url = document["url"]
-                context = document["context"] if "context" in document else ""
+                context = document["context"] if "context" in document else []
                 text = document["text"]
                 chunk_text = document["chunk_text"]
 
@@ -1203,6 +1248,7 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     chunk_id,
                     doc_id,
                     chunk_index,
+                    chunk_xxh64,
                     title,
                     surtitle,
                     source,
@@ -1234,9 +1280,10 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
             data_to_insert = []
 
             for document, embeddings in zip(batch_documents, batch_embeddings):
-                chunk_id = document["hash"].encode("utf8").hex()
                 doc_id = document["sid"]
                 chunk_index = document["chunk_index"]
+                chunk_id = f"{doc_id}_{chunk_index}"
+                chunk_xxh64 = document["chunk_xxh64"]  # Hash of chunk_text
                 audience = document["audience"]
                 theme = document["theme"]
                 title = document["title"]
@@ -1254,6 +1301,7 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     chunk_id,
                     doc_id,
                     chunk_index,
+                    chunk_xxh64,
                     audience,
                     theme,
                     title,
