@@ -180,7 +180,7 @@ def generate_embeddings_with_retry(
                 )
                 raise
             logger.error(
-                f"Error generating embeddings for : {data}. Error: {e}. Retrying in {time_sleep} seconds (attempt {attempt + 1}/5)"
+                f"Error generating embeddings for : {data}. Error: {e}. Retrying in {time_sleep} seconds (attempt {attempt + 1}/{attempts})"
             )
             time.sleep(time_sleep)  # Waiting {time_sleep} seconds before retrying
 
@@ -437,7 +437,7 @@ def dole_cut_file_content(text: str):
                     )
             return all_articles
         else:
-            print("No articles found in the text.")
+            logger.debug("No articles found in the text.")
             return []
 
 
@@ -474,7 +474,6 @@ def dole_cut_exp_memo(text: str, section: str) -> str:
                 return max(numbers)
             except ValueError:
                 # If conversion fails, return 0
-                print("matches:", matches)
                 logger.debug("Error converting article numbers to integers.")
                 return 0
         else:

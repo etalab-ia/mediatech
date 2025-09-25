@@ -2,11 +2,11 @@ from datetime import datetime
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 from urllib.error import HTTPError
+from tqdm import tqdm
 from utils import (
     load_data_history,
     load_config,
-    extract_and_remove_tar_files,
-    remove_folder,
+    download_file,
 )
 from .files_processing import process_data
 from config import get_logger, BASE_PATH
@@ -14,7 +14,6 @@ import os
 import requests
 import json
 import shutil
-import wget
 
 logger = get_logger(__name__)
 
@@ -44,7 +43,9 @@ def download_and_optionally_process_files(
         attributes = config.get(data_name.lower(), {})
         if attributes.get("type") == "dila_folder":
             url = attributes.get("download_url", "")
-            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
+            download_folder = os.path.join(
+                BASE_PATH, attributes.get("download_folder", "")
+            )
             # Ensure the download folder exists
             os.makedirs(download_folder, exist_ok=True)
             try:
@@ -102,17 +103,8 @@ def download_and_optionally_process_files(
                     ]:  # As we already downloaded the last file, we start from the next file
                         file_url = os.path.join(url, filename)
                         download_path = os.path.join(download_folder, filename)
-                        logger.debug(f"Downloading {file_url} to {download_folder}")
 
-                        file_response = requests.get(file_url)
-                        file_response.raise_for_status()
-                        with open(download_path, "wb") as file:
-                            file.write(file_response.content)
-                        logger.debug(
-                            f"Successfully downloaded {filename} to {download_folder}"
-                        )
-
-                        extract_and_remove_tar_files(download_folder)
+                        download_file(url=file_url, destination_path=download_path)
 
                         if process:
                             # Process the downloaded file and remove the folder after processing
@@ -137,16 +129,15 @@ def download_and_optionally_process_files(
                         logger.info(
                             f"Log config file successfully updated to {data_history_path}"
                         )
-                    if process:
-                        # Remove the folder after processing
-                        remove_folder(folder_path=download_folder)
 
             except Exception as e:
                 logger.error(f"Error downloading files: {e}")
                 raise e
 
         elif attributes.get("type") == "directory":
-            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
+            download_folder = os.path.join(
+                BASE_PATH, attributes.get("download_folder", "")
+            )
             os.makedirs(download_folder, exist_ok=True)
 
             try:
@@ -188,8 +179,10 @@ def download_and_optionally_process_files(
                 )
 
                 try:
-                    wget.download(
-                        attributes["download_url"], os.path.join(download_folder, file)
+                    downloaded_file_path = os.path.join(download_folder, file)
+                    download_file(
+                        url=attributes["download_url"],
+                        destination_path=downloaded_file_path,
                     )
                 except Exception as e:
                     logger.error(f"Error downloading files: {e}")
@@ -200,8 +193,8 @@ def download_and_optionally_process_files(
                     os.path.join(download_folder, file), download_folder
                 )
 
-                logger.debug(f"deleting {data_name} archive...")
-                os.remove((os.path.join(download_folder, file)))
+                shutil.unpack_archive(downloaded_file_path, download_folder)
+                os.remove(downloaded_file_path)
 
                 new_files = [
                     x for x in os.listdir(download_folder) if x not in old_files
@@ -252,8 +245,10 @@ def download_and_optionally_process_files(
                         )
 
         elif attributes.get("type") == "sheets":
-            # Script based on the pyalbert.corpus.download_rag_sources function)
-            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
+            # Script based on the pyalbert.corpus.download_rag_sources function
+            download_folder = os.path.join(
+                BASE_PATH, attributes.get("download_folder", "")
+            )
 
             try:
                 last_download_date = log.get(data_name).get("last_download_date", "")
@@ -297,10 +292,11 @@ def download_and_optionally_process_files(
                 if os.path.exists(filename_tmp):
                     os.remove(filename_tmp)
                 try:
-                    old_name = wget.download(
-                        attributes.get("download_url"), out=download_folder
+                    download_file(
+                        url=attributes.get("download_url"),
+                        destination_path=filename_tmp,
                     )
-                    shutil.move(old_name, filename_tmp)  # Renaming the file to temp
+
                 except HTTPError as err:
                     logger.error(f"Error: {err}")
                     logger.error(
@@ -324,7 +320,7 @@ def download_and_optionally_process_files(
                         filename_tmp, extract_dir=target, format=content_type
                     )
                 else:
-                    target = f"{target}.{old_name.split('.')[-1]}"
+                    target = f"{target}.{downloaded_file_name.split('.')[-1]}"
                     shutil.move(
                         filename_tmp, target
                     )  # Renaming the file with the correct extension
@@ -352,7 +348,9 @@ def download_and_optionally_process_files(
         elif attributes.get("type") == "data_gouv":
             logger.info(f"Downloading '{data_name}'...")
             url = attributes.get("download_url", "")
-            download_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
+            download_folder = os.path.join(
+                BASE_PATH, attributes.get("download_folder", "")
+            )
             try:
                 last_downloaded_file = log.get(data_name).get(
                     "last_downloaded_file", ""
@@ -401,10 +399,12 @@ def download_and_optionally_process_files(
                             logger.info(
                                 f"Downloading {downloaded_file_name} from {download_url}..."
                             )
-                            # Download the file using wget
-                            wget.download(
-                                download_url,
-                                os.path.join(download_folder, f"{data_name}.csv"),
+                            # Download the file
+                            download_file(
+                                url=download_url,
+                                destination_path=os.path.join(
+                                    download_folder, f"{data_name}.csv"
+                                ),
                             )
 
                             logger.info(

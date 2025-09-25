@@ -15,7 +15,7 @@ from config import (
     config_file_path,
 )
 from utils import (
-    generate_embeddings,
+    generate_embeddings_with_retry,
     format_model_name,
     format_to_table_name,
     extract_legi_data,
@@ -54,7 +54,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
         )
         cursor = conn.cursor()
         logger.info("Connected to PostgreSQL database")
-        probe_vector = generate_embeddings(data="Hey, I'am a probe", model=model)[0]
+        probe_vector = generate_embeddings_with_retry(data="Hey, I'am a probe", model=model)[0]
         embedding_size = len(probe_vector)
 
         model_name = format_model_name(model)
@@ -849,7 +849,7 @@ def postgres_to_qdrant(
         sparse vector embeddings to support hybrid search.
     """
 
-    probe_vector = generate_embeddings(data="Hey, I'am a probe", model=model)[0]
+    probe_vector = generate_embeddings_with_retry(data="Hey, I'am a probe", model=model)[0]
     embedding_size = len(probe_vector)
     model_name = format_model_name(model)
     bm25_embedding_model = SparseTextEmbedding("Qdrant/bm25")  # For hybrid search
@@ -1035,3 +1035,4 @@ def sync_obsolete_doc_ids(table_name: str, old_doc_ids: list, new_doc_ids: list)
     finally:
         if conn:
             conn.close()
+            logger.debug("PostgreSQL connection closed")
