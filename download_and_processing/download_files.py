@@ -2,11 +2,11 @@ from datetime import datetime
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
 from urllib.error import HTTPError
-from tqdm import tqdm
 from utils import (
     load_data_history,
     load_config,
     download_file,
+    extract_and_remove_tar_file,
 )
 from .files_processing import process_data
 from config import get_logger, BASE_PATH
@@ -23,6 +23,7 @@ def download_and_optionally_process_files(
     config_file_path: str,
     data_history_path: str,
     process: bool = False,
+    streaming: bool = False,
     model: str = "BAAI/bge-m3",
 ):
     """
@@ -34,6 +35,7 @@ def download_and_optionally_process_files(
         config_file_path: Path to configuration file containing download settings
         data_history_path: Path to JSON file tracking download history
         process: Flag to indicate whether to process the data after download (default: False)
+        streaming: Flag to indicate whether to stream extraction of tar files, for DILA files only (default: True)
         model: Model name for data processing (default: "BAAI/bge-m3")
     """
 
@@ -106,9 +108,17 @@ def download_and_optionally_process_files(
 
                         download_file(url=file_url, destination_path=download_path)
 
+                        if not streaming:
+                            extract_and_remove_tar_file(
+                                file_path=download_path, extract_path=download_folder
+                            )
                         if process:
                             # Process the downloaded file and remove the folder after processing
-                            process_data(base_folder=download_folder, model=model)
+                            process_data(
+                                base_folder=download_folder,
+                                streaming=streaming,
+                                model=model,
+                            )
 
                             logger.info(
                                 f"Successfully downloaded and processed {filename}"

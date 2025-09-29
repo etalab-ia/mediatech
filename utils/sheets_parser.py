@@ -323,7 +323,7 @@ def _parse_xml_text_structured(
     return state
 
 
-def _parse_xml_text(xml_file:str, structured:bool=False) -> dict:
+def _parse_xml_text(xml_file: str, structured: bool = False) -> dict:
     """Parse a service-public XML file and return a normalized dict.
 
     If structured=True preserves sections; otherwise returns flattened text.
@@ -510,14 +510,14 @@ def _parse_xml(
             logger.debug(f"Processing sheet: {current_pct}%\r", end="")
 
         if parse_type == "text":
-            doc = _parse_xml_text(xml_file, structured=structured) # returns dict
+            doc = _parse_xml_text(xml_file, structured=structured)  # returns dict
             if doc:
                 docs.append(doc)
         elif parse_type == "questions":
             _docs = _parse_xml_questions(xml_file)
             docs.extend(_docs)
 
-    return docs # list of dicts
+    return docs  # list of dicts
 
 
 def _parse_travailEmploi(target_dir: str, structured: bool = False) -> list[dict]:
@@ -582,13 +582,6 @@ class RagSource:
     def get_sheets(cls, storage_dir: str | None, structured: bool = False):
         if not storage_dir:
             raise ValueError("You must give a storage directory.")
-
-        # if isinstance(sources, str):
-        #     sources = [sources]
-
-        # for source in sources:
-        #     if not cls.is_valid(source):
-        #         raise ValueError("This RAG source is not known: %s" % source)
 
         sheets = []
         if SERVICE_PUBLIC_PART_DATA_FOLDER.endswith(

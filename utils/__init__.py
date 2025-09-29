@@ -5,8 +5,8 @@ from .chunking_and_embedding import (
     make_chunks,
     make_chunks_directories,
     make_chunks_sheets,
-    dole_cut_file_content,
-    dole_cut_exp_memo,
+    _dole_cut_file_content,
+    _dole_cut_exp_memo,
 )
 from .data_helpers import (
     make_schedule,

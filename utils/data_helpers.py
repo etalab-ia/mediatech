@@ -116,26 +116,26 @@ def download_file(url: str, destination_path: str):
         raise e
 
 
-def extract_and_remove_tar_file(file_path: str, extract_to: str):
+def extract_and_remove_tar_file(file_path: str, extract_path: str):
     """
     Extracts a .tar.gz file to a specified directory and then removes the archive.
 
     Args:
         file_path (str): The path to the .tar.gz file to be extracted.
-        extract_to (str): The directory where the contents will be extracted.
+        extract_path (str): The directory where the contents will be extracted.
     """
     if not os.path.exists(file_path):
         logger.debug(f"File {file_path} does not exist")
         return
-    if not os.path.isdir(extract_to):
-        logger.debug(f"Directory {extract_to} does not exist")
+    if not os.path.isdir(extract_path):
+        logger.debug(f"Directory {extract_path} does not exist")
         return
     if file_path.endswith(".tar.gz"):
         logger.debug(f"Found {file_path}")
         logger.debug(f"Extracting {file_path}")
         try:
             with tarfile.open(file_path, "r:gz") as tar:
-                tar.extractall(path=extract_to, members=tar.getmembers())
+                tar.extractall(path=extract_path, members=tar.getmembers())
             os.remove(file_path)
             logger.debug(f"Removed {file_path}")
         except Exception as e:
@@ -506,7 +506,9 @@ def format_to_table_name(name: str) -> str:
     formated_name = cleaned_title.lower()
     return formated_name
 
+
 ### Imported functions from the pyalbert library
+
 
 def doc_to_chunk(doc: dict) -> str | None:
     context = ""

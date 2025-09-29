@@ -277,6 +277,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                             start_date TEXT,
                             end_date TEXT,
                             nota TEXT,
+                            links JSONB,
                             text TEXT,
                             chunk_text TEXT,
                             "embeddings_{model_name}" vector({embedding_size}),
@@ -598,7 +599,7 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             "CNIL",
             "CONSTIT",
             "DOLE",
-        ]:  # Only for data having a DILA cid
+        ]:  # Only for data having a DILA cid (doc_id)
             # Delete the existing data for the same doc_id in order to avoid duplicates and outdated data
             source_doc_id = data[0][
                 1
@@ -737,8 +738,8 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
 
         elif table_name.lower() == "legi":
             insert_query = f"""
-                INSERT INTO LEGI (chunk_id, doc_id, chunk_index, chunk_xxh64, nature, category, ministry, status, title, full_title, subtitles, number, start_date, end_date, nota, text, chunk_text, "embeddings_{model_name}")
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO LEGI (chunk_id, doc_id, chunk_index, chunk_xxh64, nature, category, ministry, status, title, full_title, subtitles, number, start_date, end_date, nota, links, text, chunk_text, "embeddings_{model_name}")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (chunk_id) DO UPDATE SET
                 doc_id = EXCLUDED.doc_id,
                 chunk_index = EXCLUDED.chunk_index,
@@ -754,6 +755,7 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
                 start_date = EXCLUDED.start_date,
                 end_date = EXCLUDED.end_date,
                 nota = EXCLUDED.nota,
+                links = EXCLUDED.links,
                 text = EXCLUDED.text,
                 chunk_text = EXCLUDED.chunk_text,
                 "embeddings_{model_name}" = EXCLUDED."embeddings_{model_name}";
