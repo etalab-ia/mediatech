@@ -476,14 +476,28 @@ def export_table_to_parquet(
                 f"~{row_count} rows to {output_path}"
             )
 
-            conn.execute(f"""
+            if table_name in [
+                "state_administrations_directory",
+                "local_administrations_directory",
+                "data_gouv_datasets_catalog",
+            ]:
+                conn.execute(f"""
                 COPY (
                     SELECT * FROM postgres_db.{table_name}
                     WHERE doc_id IN ('{doc_ids_str}')
-                    ORDER BY doc_id, chunk_index
+                    ORDER BY doc_id
                 ) TO '{output_path}'
                 (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
             """)
+            else:
+                conn.execute(f"""
+                    COPY (
+                        SELECT * FROM postgres_db.{table_name}
+                        WHERE doc_id IN ('{doc_ids_str}')
+                        ORDER BY doc_id, chunk_index
+                    ) TO '{output_path}'
+                    (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
+                """)
 
         os.makedirs(output_folder, exist_ok=True)
 
