@@ -476,20 +476,14 @@ def export_table_to_parquet(
                 f"~{row_count} rows to {output_path}"
             )
 
-            if table_name in [
-                "state_administrations_directory",
-                "local_administrations_directory",
-                "data_gouv_datasets_catalog",
-            ]:
-                conn.execute(f"""
-                COPY (
-                    SELECT * FROM postgres_db.{table_name}
-                    WHERE doc_id IN ('{doc_ids_str}')
-                    ORDER BY doc_id
-                ) TO '{output_path}'
-                (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
-            """)
-            else:
+            has_chunk_index = (
+                conn.execute(
+                    f"""SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND LOWER(table_name) = LOWER('{table_name}') AND column_name = 'chunk_index'"""
+                ).fetchone()[0]
+                > 0
+            )
+
+            if has_chunk_index:
                 conn.execute(f"""
                     COPY (
                         SELECT * FROM postgres_db.{table_name}
@@ -498,6 +492,15 @@ def export_table_to_parquet(
                     ) TO '{output_path}'
                     (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
                 """)
+            else:
+                conn.execute(f"""
+                COPY (
+                    SELECT * FROM postgres_db.{table_name}
+                    WHERE doc_id IN ('{doc_ids_str}')
+                    ORDER BY doc_id
+                ) TO '{output_path}'
+                (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
+            """)
 
         os.makedirs(output_folder, exist_ok=True)
 
