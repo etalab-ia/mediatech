@@ -1,5 +1,6 @@
 import json
 import uuid
+from contextlib import contextmanager
 
 import psycopg2
 from fastembed import SparseTextEmbedding
@@ -405,6 +406,117 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
             logger.debug("PostgreSQL connection closed")
 
 
+@contextmanager
+def refresh_table(table_name: str, model: str = "BAAI/bge-m3"):
+    """
+    Context manager for refreshing a PostgreSQL table by dropping indexes, truncating data,
+    and recreating indexes.
+
+    Args:
+        table_name (str): Name of the table to refresh
+        model (str): Embedding model name for index recreation
+    """
+    conn = None
+    try:
+        # Drop indexes + Truncate
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        cursor = conn.cursor()
+        model_name = format_model_name(model)
+
+        # Check if table exists
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = %s
+            );
+        """,
+            (table_name.lower(),),
+        )
+
+        if not cursor.fetchone()[0]:
+            logger.warning(f"Table '{table_name.upper()}' does not exist")
+            yield
+            return
+
+        logger.info(f"Starting refresh for table {table_name.upper()}")
+
+        # Drop HNSW index
+        cursor.execute(
+            """
+            SELECT indexname FROM pg_indexes
+            WHERE tablename = %s AND indexdef LIKE %s;
+        """,
+            (table_name.lower(), f"%embeddings_{model_name}%"),
+        )
+
+        hnsw_result = cursor.fetchone()
+        if hnsw_result:
+            cursor.execute(f'DROP INDEX IF EXISTS "{hnsw_result[0]}";')
+            logger.debug(f"Dropped HNSW index on {table_name.upper()}")
+
+        # Drop doc_id index
+        doc_id_idx = f"idx_{table_name.lower()}_doc_id"
+        cursor.execute(f"DROP INDEX IF EXISTS {doc_id_idx};")
+        logger.debug(f"Dropped B-tree index on doc_id for {table_name.upper()}")
+
+        # Truncate table
+        cursor.execute(f"TRUNCATE TABLE {table_name.upper()} RESTART IDENTITY;")
+        conn.commit()
+        logger.info(f"Table {table_name.upper()} truncated successfully")
+
+        conn.close()
+
+        yield
+
+        # Recreate indexes
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        cursor = conn.cursor()
+
+        logger.info(f"Recreating indexes on {table_name.upper()}...")
+
+        # Recreate HNSW index
+        cursor.execute(
+            f"""CREATE INDEX ON {table_name.upper()} USING hnsw ("embeddings_{model_name}" vector_cosine_ops) WITH (m = 16, ef_construction = 128);"""
+        )
+        logger.debug(f"HNSW index recreated on {table_name.upper()}")
+
+        # Recreate doc_id index
+        cursor.execute(
+            f"""CREATE INDEX idx_{table_name.lower()}_doc_id ON {table_name.upper()}(doc_id);"""
+        )
+        logger.debug(f"B-tree index on doc_id recreated for {table_name.upper()}")
+
+        # Update statistics
+        cursor.execute(f"ANALYZE {table_name.upper()};")
+        conn.commit()
+        logger.debug(
+            f"All indexes recreated and statistics updated for {table_name.upper()}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error during table refresh for '{table_name.upper()}': {e}")
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("PostgreSQL connection closed")
+
+
 def create_table_from_existing(
     source_table: str, target_table: str, include_indexes: bool = True
 ):
@@ -481,7 +593,7 @@ def create_table_from_existing(
             logger.debug("PostgreSQL connection closed")
 
 
-def split_table(source_table: str, target_table: str, data_type: str, value: str):
+def _split_table(source_table: str, target_table: str, data_type: str, value: str):
     """
     Split data from source table to target table based on specified criteria.
 
@@ -588,7 +700,7 @@ def split_legi_table():
             target_table=f"legi_{format_to_table_name(code)}",
             include_indexes=True,
         )
-        split_table(
+        _split_table(
             source_table="legi",
             target_table=f"legi_{format_to_table_name(code)}",
             data_type="code",
@@ -601,7 +713,7 @@ def split_legi_table():
             target_table=f"legi_{format_to_table_name(category)}",
             include_indexes=True,
         )
-        split_table(
+        _split_table(
             source_table="legi",
             target_table=f"legi_{format_to_table_name(category)}",
             data_type="category",
@@ -1016,6 +1128,46 @@ def remove_data(table_name: str, column: str, value: str):
         if conn:
             conn.close()
             logger.debug("PostgreSQL connection closed")
+
+
+def get_distinct_values(table_name: str, column: str) -> list:
+    """
+    Retrieves all unique values from a specified column in a PostgreSQL table.
+
+    Args:
+        table_name (str): The name of the table to query.
+        column (str): The name of the column to retrieve distinct values from.
+
+    Returns:
+        list: A list containing unique values from the specified column, or an empty list if the table is empty.
+    """
+    conn = None
+    all_values = []
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        cursor = conn.cursor()
+
+        logger.info(
+            f"Fetching existing values from column {column} in table {table_name.upper()}..."
+        )
+        cursor.execute(f"SELECT DISTINCT {column} FROM {table_name.upper()};")
+
+        all_values = [row[0] for row in cursor.fetchall()]
+
+    except Exception as e:
+        logger.error(f"Error connecting to the database: {e}")
+        raise e
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("Database connection closed.")
+        return all_values
 
 
 def sync_obsolete_doc_ids(table_name: str, old_doc_ids: list, new_doc_ids: list):

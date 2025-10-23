@@ -50,6 +50,22 @@ def get_env_variable_path(var_name: str, default_value: str = None):
     return os.path.join(BASE_PATH, path)
 
 
+# Data source mapping
+SOURCE_MAP = {
+    "service_public": [
+        "service_public_part",
+        "service_public_pro",
+    ],
+    "travail_emploi": ["travail_emploi"],
+    "legi": ["legi"],
+    "cnil": ["cnil"],
+    "state_administrations_directory": ["state_administrations_directory"],
+    "local_administrations_directory": ["local_administrations_directory"],
+    "constit": ["constit"],
+    "dole": ["dole"],
+    "data_gouv_datasets_catalog": ["data_gouv_datasets_catalog"],
+}
+
 # Data folders
 CNIL_DATA_FOLDER = get_env_variable_path("CNIL_DATA_FOLDER", "data/unprocessed/cnil")
 CONSTIT_DATA_FOLDER = get_env_variable_path(

@@ -22,8 +22,6 @@ Commands:
     upload_dataset              Upload dataset to Hugging Face
 
 Options:
-    --config-file=<path>    Path to the config file
-    --history-file=<path>   Path to the data history file
     --delete-existing       Delete existing tables before creating new ones
     --all                   Select all data sources from the data configuration file
     --model=<model_name>    Embedding model name [default: BAAI/bge-m3]. It is mandatory to specify the same model for all commands.
@@ -59,17 +57,8 @@ from docopt import docopt
 
 from config import (
     BASE_PATH,
-    CNIL_DATA_FOLDER,
-    CONSTIT_DATA_FOLDER,
-    DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER,
-    DOLE_DATA_FOLDER,
     HF_TOKEN,
-    LEGI_DATA_FOLDER,
-    LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER,
-    SERVICE_PUBLIC_PART_DATA_FOLDER,
-    SERVICE_PUBLIC_PRO_DATA_FOLDER,
-    STATE_ADMINISTRATIONS_DIRECTORY_FOLDER,
-    TRAVAIL_EMPLOI_DATA_FOLDER,
+    SOURCE_MAP,
     config_file_path,
     data_history_path,
     get_logger,
@@ -102,48 +91,25 @@ def main():
                     f"Downloading all files using config: {config_file_path} and history: {data_history_path}"
                 )
                 download_and_optionally_process_all_files(
-                    config_file_path=config_file_path,
-                    data_history_path=data_history_path,
                     process=False,
                     model=args["--model"] if args["--model"] else "BAAI/bge-m3",
                 )
             else:
                 source = args["--source"]
-                source_map = {
-                    "service_public": [
-                        "service_public_part",
-                        "service_public_pro",
-                    ],
-                    "travail_emploi": ["travail_emploi"],
-                    "legi": ["legi"],
-                    "cnil": ["cnil"],
-                    "state_administrations_directory": [
-                        "state_administrations_directory"
-                    ],
-                    "local_administrations_directory": [
-                        "local_administrations_directory"
-                    ],
-                    "constit": ["constit"],
-                    "dole": ["dole"],
-                    "data_gouv_datasets_catalog": ["data_gouv_datasets_catalog"],
-                }
 
-                if source not in source_map:
-                    logger.error(f"Unknown source: {source}")
-                    return 1
-                else:
+                if source in SOURCE_MAP:
                     logger.info(
                         f"Downloading and processing {source} files using config: {config_file_path} and history: {data_history_path}"
                     )
 
-                    for data_name in source_map[source]:
-                        download_and_optionally_process_files(
-                            data_name=data_name,
-                            config_file_path=config_file_path,
-                            data_history_path=data_history_path,
-                            process=False,
-                            model=args["--model"] if args["--model"] else "BAAI/bge-m3",
-                        )
+                    download_and_optionally_process_files(
+                        table_name=source,
+                        process=False,
+                        model=args["--model"] if args["--model"] else "BAAI/bge-m3",
+                    )
+                else:
+                    logger.error(f"Unknown source: {source}")
+                    return 1
 
         # Download and process files
         # This method as a better storage optimization compared to download_files + process_files)
@@ -153,47 +119,24 @@ def main():
                     f"Downloading and processing all files using config: {config_file_path} and history: {data_history_path}"
                 )
                 download_and_optionally_process_all_files(
-                    config_file_path=config_file_path,
-                    data_history_path=data_history_path,
                     process=True,
                     model=args["--model"] if args["--model"] else "BAAI/bge-m3",
                 )
             else:
                 source = args["--source"]
-                source_map = {
-                    "service_public": [
-                        "service_public_part",
-                        "service_public_pro",
-                    ],
-                    "travail_emploi": ["travail_emploi"],
-                    "legi": ["legi"],
-                    "cnil": ["cnil"],
-                    "state_administrations_directory": [
-                        "state_administrations_directory"
-                    ],
-                    "local_administrations_directory": [
-                        "local_administrations_directory"
-                    ],
-                    "constit": ["constit"],
-                    "dole": ["dole"],
-                    "data_gouv_datasets_catalog": ["data_gouv_datasets_catalog"],
-                }
 
-                if source not in source_map:
+                if source in SOURCE_MAP:
+                    logger.info(
+                        f"Downloading and processing {source} files using config: {config_file_path} and history: {data_history_path}"
+                    )
+                    download_and_optionally_process_files(
+                        table_name=source,
+                        process=True,
+                        model=args["--model"] if args["--model"] else "BAAI/bge-m3",
+                    )
+                else:
                     logger.error(f"Unknown source: {source}")
                     return 1
-                else:
-                    for data_name in source_map[source]:
-                        logger.info(
-                            f"Downloading and processing {data_name} files using config: {config_file_path} and history: {data_history_path}"
-                        )
-                        download_and_optionally_process_files(
-                            data_name=data_name,
-                            config_file_path=config_file_path,
-                            data_history_path=data_history_path,
-                            process=True,
-                            model=args["--model"] if args["--model"] else "BAAI/bge-m3",
-                        )
 
         # Create tables
         elif args["create_tables"]:
@@ -213,34 +156,13 @@ def main():
                 process_all_data(unprocessed_data_folder=folder, model=model)
             else:
                 source = args["--source"]
-                source_map = {
-                    "service_public": [
-                        SERVICE_PUBLIC_PRO_DATA_FOLDER,
-                        SERVICE_PUBLIC_PART_DATA_FOLDER,
-                    ],
-                    "travail_emploi": [TRAVAIL_EMPLOI_DATA_FOLDER],
-                    "legi": [LEGI_DATA_FOLDER],
-                    "cnil": [CNIL_DATA_FOLDER],
-                    "state_administrations_directory": [
-                        STATE_ADMINISTRATIONS_DIRECTORY_FOLDER
-                    ],
-                    "local_administrations_directory": [
-                        LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER
-                    ],
-                    "constit": [CONSTIT_DATA_FOLDER],
-                    "dole": [DOLE_DATA_FOLDER],
-                    "data_gouv_datasets_catalog": [
-                        DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER
-                    ],
-                }
 
-                if source not in source_map:
+                if source in SOURCE_MAP:
+                    logger.info(f"Processing data from source: {source}")
+                    process_data(table_name=source, model=model)
+                else:
                     logger.error(f"Unknown source: {source}")
                     return 1
-                else:
-                    logger.info(f"Processing data from source: {source}")
-                    for data_folder in source_map[source]:
-                        process_data(base_folder=data_folder, model=model)
 
         # Split table into smaller tables based on several criteria
         elif args["split_table"]:

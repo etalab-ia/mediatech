@@ -13,14 +13,13 @@ from huggingface_hub.utils import HfHubHTTPError
 
 from config import (
     BASE_PATH,
-    SERVICE_PUBLIC_PART_DATA_FOLDER,
-    SERVICE_PUBLIC_PRO_DATA_FOLDER,
+    SOURCE_MAP,
     config_file_path,
     data_history_path,
     get_logger,
 )
 
-from . import file_sha256, load_data_history, remove_file, remove_folder
+from . import file_sha256, load_config, load_data_history, remove_file, remove_folder
 
 logger = get_logger(__name__)
 
@@ -185,30 +184,8 @@ class HuggingFace:
                         f"Method 1/3 fail : Unable to retrieve the upload date for {hf_file_path} with the LFS datas from Hugging Face: {e}"
                     )
                     try:
-                        # Define a mapping for dataset names to their corresponding file names in the data history file
-                        source_map = {
-                            "service-public": [
-                                "service_public_part",
-                                "service_public_pro",
-                            ],
-                            "travail-emploi": ["travail_emploi"],
-                            "legi": ["legi"],
-                            "cnil": ["cnil"],
-                            "state-administrations-directory": [
-                                "state_administrations_directory"
-                            ],
-                            "local-administrations-directory": [
-                                "local_administrations_directory"
-                            ],
-                            "constit": ["constit"],
-                            "dole": ["dole"],
-                            "data-gouv-datasets-catalog": [
-                                "data_gouv_datasets_catalog"
-                            ],
-                        }
-
                         log = load_data_history(data_history_path=data_history_path)
-                        file_name = source_map[dataset_name.lower()][
+                        file_name = SOURCE_MAP[dataset_name.lower()][
                             0
                         ]  # Get only the first file name from the source map
                         attributes = log.get(file_name, {})
@@ -406,23 +383,10 @@ class HuggingFace:
 
         # Update the data history file with the last Hugging Face upload date
 
-        # Define a mapping for dataset names to their corresponding file names in the data history file
-        source_map = {
-            "service-public": ["service_public_part", "service_public_pro"],
-            "travail-emploi": ["travail_emploi"],
-            "legi": ["legi"],
-            "cnil": ["cnil"],
-            "state-administrations-directory": ["state_administrations_directory"],
-            "local-administrations-directory": ["local_administrations_directory"],
-            "constit": ["constit"],
-            "dole": ["dole"],
-            "data-gouv-datasets-catalog": ["data_gouv_datasets_catalog"],
-        }
-
         try:
             log = load_data_history(data_history_path=data_history_path)
             date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            for file_name in source_map[dataset_name.lower()]:
+            for file_name in SOURCE_MAP[dataset_name.lower()]:
                 if not log.get(file_name):
                     log[file_name] = {}
                 log[file_name]["last_hf_upload_date"] = date
@@ -445,19 +409,12 @@ class HuggingFace:
             config_file_path (str): Path to the configuration file containing dataset names and paths.
         """
         try:
-            with open(config_file_path, "r") as file:
-                config = json.load(file)
-
-            for dataset_name, attributes in config.items():
-                if os.path.join(BASE_PATH, attributes.get("download_folder")) in [
-                    SERVICE_PUBLIC_PRO_DATA_FOLDER,
-                    SERVICE_PUBLIC_PART_DATA_FOLDER,
-                ]:
-                    dataset_name = "service_public"
-                local_folder_path = f"{BASE_PATH}/data/parquet/{dataset_name.lower()}"
+            config = load_config(config_file_path=config_file_path)
+            for table_name in config.keys():
+                local_folder_path = f"{BASE_PATH}/data/parquet/{table_name.lower()}"
                 if os.path.exists(local_folder_path):
                     self.upload_dataset(
-                        dataset_name=dataset_name.lower().replace("_", "-"),
+                        dataset_name=table_name.lower().replace("_", "-"),
                         local_folder_path=local_folder_path,
                         private=private,
                     )

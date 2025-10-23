@@ -293,7 +293,7 @@ def make_chunks_sheets(
         )
 
     sheets = RagSource.get_sheets(
-        storage_dir, structured=structured
+        storage_dir=storage_dir, structured=structured
     )  # list of dicts built from XML files
 
     chunks = []

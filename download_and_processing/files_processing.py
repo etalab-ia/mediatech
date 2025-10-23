@@ -6,30 +6,12 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 
 import pandas as pd
-import psycopg2
 import xxhash
 from openai import PermissionDeniedError
 from tqdm import tqdm
 
-from config import (
-    CNIL_DATA_FOLDER,
-    CONSTIT_DATA_FOLDER,
-    DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER,
-    DOLE_DATA_FOLDER,
-    LEGI_DATA_FOLDER,
-    LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER,
-    POSTGRES_DB,
-    POSTGRES_HOST,
-    POSTGRES_PASSWORD,
-    POSTGRES_PORT,
-    POSTGRES_USER,
-    SERVICE_PUBLIC_PART_DATA_FOLDER,
-    SERVICE_PUBLIC_PRO_DATA_FOLDER,
-    STATE_ADMINISTRATIONS_DIRECTORY_FOLDER,
-    TRAVAIL_EMPLOI_DATA_FOLDER,
-    get_logger,
-)
-from database import insert_data, remove_data, sync_obsolete_doc_ids
+from config import BASE_PATH, SOURCE_MAP, config_file_path, get_logger
+from database import insert_data, refresh_table, remove_data
 from utils import (
     CheckpointManager,
     CorpusHandler,
@@ -38,6 +20,7 @@ from utils import (
     _make_schedule,
     format_subtitles,
     generate_embeddings_with_retry,
+    load_config,
     make_chunks,
     make_chunks_directories,
     make_chunks_sheets,
@@ -48,7 +31,125 @@ from utils import (
 logger = get_logger(__name__)
 
 
-def process_data_gouv_files(target_dir: str, model: str = "BAAI/bge-m3"):
+def _process_data_gouv_content(
+    df: pd.DataFrame,
+    table_name: str,
+    checkpoint: CheckpointManager,
+    last_processed_index: int,
+    model: str,
+):
+    """
+    Process data.gouv.fr content with checkpoint support for resume capability.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the data to process
+        table_name (str): Name of the database table to insert data into
+        checkpoint (CheckpointManager): Checkpoint manager for saving progress
+        last_processed_index (int): Index of the last processed row
+        model (str): Model name for embedding generation
+    """
+
+    df = df[
+        df["description"].str.len() >= 100
+    ]  # Filter out rows with short descriptions
+    df["chunk_text"] = (
+        df["title"].astype(str)
+        + "\n"
+        + df["organization"].astype(str)
+        + "\n"
+        + df["description"].astype(str)
+    )
+
+    total_rows = len(df)
+    logger.info(
+        f"Total rows to process: {total_rows}, "
+        f"Starting from index: {last_processed_index + 1}"
+    )
+
+    for idx, (_, row) in enumerate(
+        tqdm(df.iterrows(), desc=f"Processing {table_name}", total=total_rows)
+    ):
+        # Skip already processed rows
+        if idx <= last_processed_index:
+            continue
+
+        # Replace nan values with None in the current row
+        row = row.where(pd.notna(row), None)
+        # Making chunks
+        chunk_text = make_chunks(
+            text=row["chunk_text"], chunk_size=1000, chunk_overlap=100
+        )[
+            0
+        ]  # Only keep the first chunks because a too long description is not interesting for this kind of dataset
+
+        chunk_xxh64 = xxhash.xxh64(chunk_text.encode("utf-8"), seed=2025).hexdigest()
+
+        embeddings = generate_embeddings_with_retry(
+            data=chunk_text, attempts=5, model=model
+        )[0]
+
+        doc_id = row.get("slug", None)
+
+        new_data = (
+            row.get("id"),  # Primary key (chunk_id)
+            doc_id,
+            chunk_xxh64,  # Hash of chunk_text
+            row.get("title", None),
+            row.get("acronym", None),
+            row.get("url", None),
+            row.get("organization", None),
+            row.get("organization_id", None),
+            row.get("owner", None),
+            row.get("owner_id", None),
+            row.get("description", None),
+            row.get("frequency", None),
+            row.get("license", None),
+            row.get("temporal_coverage.start", None),
+            row.get("temporal_coverage.end", None),
+            row.get("spatial.granularity", None),
+            row.get("spatial.zones", None),
+            row.get("featured", None),
+            row.get("created_at", None),
+            row.get("last_modified", None),
+            row.get("tags", None),  # Convert tags to JSON string
+            row.get("archived", None),
+            row.get("resources_count", None),
+            row.get("main_resources_count", None),
+            row.get("resources_formats", None),
+            row.get("harvest.backend", None),
+            row.get("harvest.domain", None),
+            row.get("harvest.created_at", None),
+            row.get("harvest.modified_at", None),
+            row.get("harvest.remote_url", None),
+            row.get("quality_score", None),
+            row.get("metric.discussions", None),
+            row.get("metric.reuses", None),
+            row.get("metric.reuses_by_months", None),
+            row.get("metric.followers", None),
+            row.get("metric.followers_by_months", None),
+            row.get("metric.views", None),
+            row.get("metric.resources_downloads", None),
+            chunk_text,  # The text chunk for embedding
+            embeddings,  # The embedding vector
+        )
+
+        try:
+            insert_data(data=[new_data], table_name=table_name)
+            # Save checkpoint after successful insertion
+            checkpoint.save(idx, metadata={"doc_id": doc_id, "table": table_name})
+        except Exception as e:
+            logger.error(f"Error inserting data for row {idx} (doc_id: {doc_id}): {e}")
+            logger.error(
+                "Progress saved. Restart the process to resume from this point."
+            )
+            raise e
+
+    # All rows processed successfully
+    checkpoint.remove()
+    logger.info(f"Successfully processed all {total_rows} rows")
+
+
+def process_data_gouv_files(table_name: str, model: str = "BAAI/bge-m3"):
     """
     Process data.gouv.fr files by generating embeddings and storing them in database.
     The workflow depends on the file.
@@ -57,280 +158,90 @@ def process_data_gouv_files(target_dir: str, model: str = "BAAI/bge-m3"):
     processed row in case of errors.
 
     Args:
-        target_dir (str): Directory containing the files to process
+        table_name (str): Name of the table to process
         model (str): Model name for embedding generation. Defaults to "BAAI/bge-m3"
 
     """
-    if DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER.endswith(target_dir):
-        table_name = "data_gouv_datasets_catalog"
-        csv_path = f"{target_dir}/{table_name}.csv"
+    config = load_config(config_file_path=config_file_path)
+    data_sources = config.get(table_name.lower(), {})
 
-        # Initialiser le checkpoint manager
-        checkpoint = CheckpointManager(csv_path)
-        last_processed_index = checkpoint.load()
+    for data_source, attributes in data_sources.items():
+        if attributes.get("type") == "data_gouv":
+            target_dir = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
 
-        df = pd.read_csv(csv_path, sep=";", encoding="utf-8")
+            csv_path = f"{target_dir}/{data_source}.csv"
 
-        conn = None
-        try:
-            conn = psycopg2.connect(
-                host=POSTGRES_HOST,
-                port=POSTGRES_PORT,
-                dbname=POSTGRES_DB,
-                user=POSTGRES_USER,
-                password=POSTGRES_PASSWORD,
-            )
-            cursor = conn.cursor()
+            # Initialiser le checkpoint manager
+            checkpoint = CheckpointManager(csv_path)
+            last_processed_index = checkpoint.load()
 
-            logger.info(
-                f"Fetching existing document ids from table {table_name.upper()}..."
-            )
-            cursor.execute(f"SELECT DISTINCT doc_id FROM {table_name.upper()};")
+            df = pd.read_csv(csv_path, sep=";", encoding="utf-8")
 
-            all_old_doc_ids = {row[0] for row in cursor.fetchall()}
-
-        except Exception as e:
-            logger.error(f"Error connecting to the database: {e}")
-            raise e
-        finally:
-            if conn:
-                conn.close()
-                logger.debug("Database connection closed.")
-
-        all_new_doc_ids = []
-        df = df[
-            df["description"].str.len() >= 100
-        ]  # Filter out rows with short descriptions
-        df["chunk_text"] = (
-            df["title"].astype(str)
-            + "\n"
-            + df["organization"].astype(str)
-            + "\n"
-            + df["description"].astype(str)
-        )
-
-        total_rows = len(df)
-        logger.info(
-            f"Total rows to process: {total_rows}, "
-            f"Starting from index: {last_processed_index + 1}"
-        )
-
-        for idx, (_, row) in enumerate(
-            tqdm(df.iterrows(), desc=f"Processing {table_name}", total=total_rows)
-        ):
-            # Skip already processed rows
-            if idx <= last_processed_index:
-                continue
-
-            # Replace nan values with None in the current row
-            row = row.where(pd.notna(row), None)
-            # Making chunks
-            chunk_text = make_chunks(
-                text=row["chunk_text"], chunk_size=1000, chunk_overlap=100
-            )[
-                0
-            ]  # Only keep the first chunks because a too long description is not interesting for this kind of dataset
-
-            chunk_xxh64 = xxhash.xxh64(
-                chunk_text.encode("utf-8"), seed=2025
-            ).hexdigest()
-
-            embeddings = generate_embeddings_with_retry(
-                data=chunk_text, attempts=5, model=model
-            )[0]
-
-            doc_id = row.get("slug", None)
-
-            new_data = (
-                row.get("id"),  # Primary key (chunk_id)
-                doc_id,
-                chunk_xxh64,  # Hash of chunk_text
-                row.get("title", None),
-                row.get("acronym", None),
-                row.get("url", None),
-                row.get("organization", None),
-                row.get("organization_id", None),
-                row.get("owner", None),
-                row.get("owner_id", None),
-                row.get("description", None),
-                row.get("frequency", None),
-                row.get("license", None),
-                row.get("temporal_coverage.start", None),
-                row.get("temporal_coverage.end", None),
-                row.get("spatial.granularity", None),
-                row.get("spatial.zones", None),
-                row.get("featured", None),
-                row.get("created_at", None),
-                row.get("last_modified", None),
-                row.get("tags", None),  # Convert tags to JSON string
-                row.get("archived", None),
-                row.get("resources_count", None),
-                row.get("main_resources_count", None),
-                row.get("resources_formats", None),
-                row.get("harvest.backend", None),
-                row.get("harvest.domain", None),
-                row.get("harvest.created_at", None),
-                row.get("harvest.modified_at", None),
-                row.get("harvest.remote_url", None),
-                row.get("quality_score", None),
-                row.get("metric.discussions", None),
-                row.get("metric.reuses", None),
-                row.get("metric.reuses_by_months", None),
-                row.get("metric.followers", None),
-                row.get("metric.followers_by_months", None),
-                row.get("metric.views", None),
-                row.get("metric.resources_downloads", None),
-                chunk_text,  # The text chunk for embedding
-                embeddings,  # The embedding vector
-            )
-            all_new_doc_ids.append(doc_id)
-
-            try:
-                insert_data(data=[new_data], table_name=table_name)
-                # Save checkpoint after successful insertion
-                checkpoint.save(idx, metadata={"doc_id": doc_id, "table": table_name})
-            except Exception as e:
-                logger.error(
-                    f"Error inserting data for row {idx} (doc_id: {doc_id}): {e}"
+            if last_processed_index == -1:
+                # First run: use refresh_table for optimization
+                logger.info("First run detected, using refresh_table for optimization")
+                with refresh_table(table_name, model):
+                    _process_data_gouv_content(
+                        df=df,
+                        table_name=table_name,
+                        checkpoint=checkpoint,
+                        last_processed_index=last_processed_index,
+                        model=model,
+                    )
+            else:
+                # Resume: normal processing without refresh
+                logger.info(
+                    f"Resuming from checkpoint index {last_processed_index + 1}"
                 )
-                logger.error(
-                    "Progress saved. Restart the process to resume from this point."
+                _process_data_gouv_content(
+                    df=df,
+                    table_name=table_name,
+                    checkpoint=checkpoint,
+                    last_processed_index=last_processed_index,
+                    model=model,
                 )
-                raise e
 
-        # All rows processed successfully
-        checkpoint.remove()
-        logger.info(f"Successfully processed all {total_rows} rows")
-
-        # Sync obsolete doc_ids (remove entries not in all_new_doc_ids) as the file we are processing is the new full dataset
-        sync_obsolete_doc_ids(
-            table_name=table_name,
-            old_doc_ids=all_old_doc_ids,
-            new_doc_ids=all_new_doc_ids,
-        )
-    else:
-        logger.error(
-            f"Unknown target directory '{target_dir}' for processing data.gouv.fr files."
-        )
-        raise ValueError(
-            f"Unknown target directory '{target_dir}' for processing data.gouv.fr files."
-        )
+        else:
+            logger.error(
+                f"Unknown target directory '{target_dir}' for processing data.gouv.fr files."
+            )
+            raise ValueError(
+                f"Unknown target directory '{target_dir}' for processing data.gouv.fr files."
+            )
 
 
-def process_directories(
-    target_dir: str, config_file_path: str, model: str = "BAAI/bge-m3"
+def _process_directories_content(
+    directory: list,
+    table_name: str,
+    checkpoint: CheckpointManager,
+    last_processed_index: int,
+    model: str,
 ):
     """
-    Processes directory data from JSON files specified in a configuration file, extracts and transforms relevant fields,
-    generates embeddings for each directory, and inserts the processed data into a database.
-
-    Implements a checkpoint system to resume processing from the last successfully
-    processed directory entry in case of errors.
-
-    Args:
-        target_dir (str): The directory path where the JSON files are located.
-        config_file_path (str): The path to the configuration JSON file that specifies which directory files to process.
-
-    Raises:
-        FileNotFoundError: If the configuration file or any specified directory JSON file is not found.
-        json.JSONDecodeError: If there is an error decoding JSON from the configuration or data files.
-        Exception: For any other unexpected errors during file loading or embedding generation.
+    Process directory content with checkpoint support for resume capability.
 
     Workflow:
-        1. Loads the configuration file to determine which directory JSON files to process.
-        2. Reads and aggregates directory data from the specified JSON files.
-        3. Extracts and processes various fields such as addresses, phone numbers, types, SIRET/SIREN, URLs, emails,
+        1. Extracts and processes various fields such as addresses, phone numbers, types, SIRET/SIREN, URLs, emails,
            opening hours, mobile applications, social networks, additional information, people in charge, and hierarchy.
-        4. Generates text chunks and embeddings for each directory entry.
-        5. Inserts the processed data, including embeddings, into a table in the database.
-
-    Logging:
-        Logs errors and information throughout the process, including file loading issues, JSON decoding errors,
-        embedding generation retries, and the number of directories loaded.
+        2. Generates text chunks and embeddings for each directory entry.
+        3. Inserts the processed data, including embeddings, into a table in the database.
+    Args:
+        directory (list): List of directory entries to process
+        table_name (str): Name of the database table to insert data into
+        checkpoint (CheckpointManager): Checkpoint manager for saving progress
+        last_processed_index (int): Index of the last processed entry
+        model (str): Model name for embedding generation
     """
-
-    # Check if the target directory is valid
-    if STATE_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(target_dir):
-        table_name = "state_administrations_directory"
-    elif LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(target_dir):
-        table_name = "local_administrations_directory"
-    else:
-        logger.error(
-            f"Unknown target directory '{target_dir}' for processing directories."
-        )
-        raise ValueError(
-            f"Unknown target directory '{target_dir}' for processing directories."
-        )
-
-    # Initialiser le checkpoint manager
-    json_path = f"{target_dir}/{table_name}.json"
-    checkpoint = CheckpointManager(json_path)
-    last_processed_index = checkpoint.load()
-
-    conn = None
-    try:
-        conn = psycopg2.connect(
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-        )
-        cursor = conn.cursor()
-
-        logger.info(
-            f"Fetching existing document ids from table {table_name.upper()}..."
-        )
-        cursor.execute(f"SELECT DISTINCT doc_id FROM {table_name.upper()};")
-
-        all_old_doc_ids = {row[0] for row in cursor.fetchall()}
-
-    except Exception as e:
-        logger.error(f"Error connecting to the database: {e}")
-        raise e
-    finally:
-        if conn:
-            conn.close()
-            logger.debug("Database connection closed.")
-
-    ### Loading directory
-    directory = []
-    try:
-        with open(f"{target_dir}/{table_name}.json", encoding="utf-8") as json_file:
-            json_data = json.load(json_file)
-            if not directory:  # First file
-                directory = json_data["service"]
-            else:
-                directory.extend(json_data["service"])
-    except FileNotFoundError:
-        logger.error(f"File not found: {target_dir}/{table_name}.json.")
-        raise
-    except json.JSONDecodeError:
-        logger.error(
-            f"Error decoding JSON from the file: {target_dir}/{table_name}.json."
-        )
-        raise
-    except Exception as e:
-        logger.error(
-            f"Unexpected error while loading file {target_dir}/{table_name}.json: {e}"
-        )
-        raise
     total_entries = len(directory)
-    logger.info(
-        f"Loaded {total_entries} lines of data from {target_dir}, "
-        f"Starting from index: {last_processed_index + 1}"
-    )
 
     ## Processing data
-    all_new_doc_ids = []
     for k, data in tqdm(
-        enumerate(directory), total=total_entries, desc=f"Processing {table_name}"
+        enumerate(directory),
+        total=total_entries,
+        desc=f"Processing {table_name}",
     ):
         # Skip already processed entries
         if k <= last_processed_index:
-            # Still collect doc_id for sync
-            doc_id = data.get("id", "")
-            all_new_doc_ids.append(doc_id)
             continue
 
         chunk_id = data.get("id", "")
@@ -538,9 +449,6 @@ def process_directories(
                 data=[new_data],
                 table_name=table_name,
             )
-
-            all_new_doc_ids.append(doc_id)
-
             # Save checkpoint after successful insertion
             checkpoint.save(k, metadata={"doc_id": doc_id, "table": table_name})
 
@@ -555,10 +463,98 @@ def process_directories(
     checkpoint.remove()
     logger.info(f"Successfully processed all {total_entries} directory entries")
 
-    # Sync obsolete doc_ids (remove entries not in all_new_doc_ids) as the file we are processing is the new full dataset
-    sync_obsolete_doc_ids(
-        table_name=table_name, old_doc_ids=all_old_doc_ids, new_doc_ids=all_new_doc_ids
-    )
+
+def process_directories(table_name: str, model: str = "BAAI/bge-m3"):
+    """
+    Processes directory data from JSON files specified in a configuration file, extracts and transforms relevant fields,
+    generates embeddings for each directory, and inserts the processed data into a database.
+
+    Implements a checkpoint system to resume processing from the last successfully
+    processed directory entry in case of errors.
+
+    Args:
+        table_name (str): The name of the table to process.
+        model (str): The identifier for the embedding model to use. Defaults to "BAAI/bge-m3".
+    Raises:
+        FileNotFoundError: If the configuration file or any specified directory JSON file is not found.
+        json.JSONDecodeError: If there is an error decoding JSON from the configuration or data files.
+        Exception: For any other unexpected errors during file loading or embedding generation.
+
+    Workflow:
+        1. Loads the configuration file to determine which directory JSON files to process.
+        2. Reads and aggregates directory data from the specified JSON files.
+        3. Process, embeds, and inserts each directory entry into the database.
+
+    Logging:
+        Logs errors and information throughout the process, including file loading issues, JSON decoding errors,
+        embedding generation retries, and the number of directories loaded.
+    """
+    config = load_config(config_file_path=config_file_path)
+    data_sources = config.get(table_name.lower(), {})
+
+    for data_source, attributes in data_sources.items():
+        if attributes.get("type") == "directory":
+            target_dir = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
+
+            # Initialiser le checkpoint manager
+            json_path = f"{target_dir}/{data_source}.json"
+            checkpoint = CheckpointManager(json_path)
+            last_processed_index = checkpoint.load()
+
+            ### Loading directory
+            directory = []
+            try:
+                with open(json_path, encoding="utf-8") as json_file:
+                    json_data = json.load(json_file)
+                    if not directory:  # First file
+                        directory = json_data["service"]
+                    else:
+                        directory.extend(json_data["service"])
+                    logger.info(
+                        f"Loaded {len(directory)} lines of data from {target_dir}, "
+                        f"Starting from index: {last_processed_index + 1}"
+                    )
+            except FileNotFoundError:
+                logger.error(f"File not found: {json_path}.")
+                raise
+            except json.JSONDecodeError:
+                logger.error(f"Error decoding JSON from the file: {json_path}.")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error while loading file {json_path}: {e}")
+                raise
+
+            if last_processed_index == -1:
+                # First run: use refresh_table for optimization
+                logger.info("First run detected, using refresh_table for optimization")
+                with refresh_table(table_name, model):
+                    _process_directories_content(
+                        directory=directory,
+                        table_name=table_name,
+                        checkpoint=checkpoint,
+                        last_processed_index=last_processed_index,
+                        model=model,
+                    )
+            else:
+                # Resume: normal processing without refresh
+                logger.info(
+                    f"Resuming from checkpoint index {last_processed_index + 1}"
+                )
+                _process_directories_content(
+                    directory=directory,
+                    table_name=table_name,
+                    checkpoint=checkpoint,
+                    last_processed_index=last_processed_index,
+                    model=model,
+                )
+
+        else:
+            logger.error(
+                f"Unknown data type for source '{data_source}' in processing directories."
+            )
+            raise ValueError(
+                f"Unknown data type for source '{data_source}' in processing directories."
+            )
 
 
 def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
@@ -1455,75 +1451,31 @@ def process_dila_xml_files(
         logger.info(f"Successfully processed all files from {source_path}")
 
 
-def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int = 10):
+def _process_sheets_content(
+    table_name: str,
+    corpus_handler: CorpusHandler,
+    checkpoint: CheckpointManager,
+    last_processed_index: int,
+    batch_size: int,
+    model: str,
+):
     """
-    Process sheets data with checkpoint support for resume capability.
-
+    Process a batch of sheets data with checkpoint support for resume capability.
     Args:
-        target_dir (str): Directory containing the sheets data
-        model (str): Model name for embedding generation
+        table_name (str): Name of the database table to insert data into
+        corpus_handler (CorpusHandler): Handler for iterating over documents and embeddings
+        checkpoint (CheckpointManager): Checkpoint manager for saving progress
+        last_processed_index (int): Index of the last processed document
         batch_size (int): Number of documents to process per batch
+        model (str): Model name for embedding generation
     """
-    table_name = ""
-    if SERVICE_PUBLIC_PRO_DATA_FOLDER.endswith(
-        target_dir
-    ) or SERVICE_PUBLIC_PART_DATA_FOLDER.endswith(target_dir):
-        table_name = "service_public"
-    elif TRAVAIL_EMPLOI_DATA_FOLDER.endswith(target_dir):
-        table_name = "travail_emploi"
-    else:
-        logger.error(f"Unknown target directory '{target_dir}' for processing sheets.")
-        raise ValueError(
-            f"Unknown target directory '{target_dir}' for processing sheets."
-        )
-
-    json_path = os.path.join(target_dir, "sheets_as_chunks.json")
-    checkpoint = CheckpointManager(source_path=json_path)
-    last_processed_index = checkpoint.load()
-
-    conn = None
-    try:
-        conn = psycopg2.connect(
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-        )
-        cursor = conn.cursor()
-
-        logger.info(
-            f"Fetching existing document ids from table {table_name.upper()}..."
-        )
-        cursor.execute(f"SELECT DISTINCT doc_id FROM {table_name.upper()};")
-
-        all_old_doc_ids = {row[0] for row in cursor.fetchall()}
-
-    except Exception as e:
-        logger.error(f"Error connecting to the database: {e}")
-        raise e
-    finally:
-        if conn:
-            conn.close()
-            logger.debug("Database connection closed.")
-
-    with open(json_path, encoding="utf-8") as f:
-        documents = json.load(f)
-
-    total_documents = len(documents)
-    logger.info(
-        f"Total documents to process: {total_documents}, "
-        f"Starting from index: {last_processed_index + 1}"
-    )
-
-    corpus_name = target_dir.split("/")[-1]
-    corpus_handler = CorpusHandler.create_handler(corpus_name, documents)
-
     processed_count = 0
 
     if table_name == "travail_emploi":
-        all_new_doc_ids = []
-        for batch_documents, batch_embeddings in corpus_handler.iter_docs_embeddings(
+        for (
+            batch_documents,
+            batch_embeddings,
+        ) in corpus_handler.iter_docs_embeddings(
             batch_size=batch_size,
             model=model,
         ):
@@ -1533,8 +1485,6 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                 # Skip already processed documents
                 if processed_count <= last_processed_index:
                     processed_count += 1
-                    # Still collect doc_id for sync
-                    all_new_doc_ids.append(document["sid"])
                     continue
                 doc_id = document["sid"]
                 chunk_index = document["chunk_index"]
@@ -1566,7 +1516,6 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     chunk_text,
                     embeddings,
                 )
-                all_new_doc_ids.append(doc_id)
                 data_to_insert.append(new_data)
                 processed_count += 1
 
@@ -1590,34 +1539,17 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     )
                     raise e
 
-        # All documents processed successfully
-        checkpoint.remove()
-        logger.info(
-            f"Successfully processed all {total_documents} documents for {table_name}"
-        )
-
-        # Sync obsolete doc_ids (remove entries not in all_new_doc_ids) as the file we are processing is the new full dataset
-        sync_obsolete_doc_ids(
-            table_name=table_name,
-            old_doc_ids=all_old_doc_ids,
-            new_doc_ids=all_new_doc_ids,
-        )
-
     elif table_name == "service_public":
-        all_new_doc_ids = []
-        processed_count = 0  # Reset counter for service_public
-
-        for batch_documents, batch_embeddings in corpus_handler.iter_docs_embeddings(
-            batch_size
-        ):
+        for (
+            batch_documents,
+            batch_embeddings,
+        ) in corpus_handler.iter_docs_embeddings(batch_size):
             data_to_insert = []
 
             for document, embeddings in zip(batch_documents, batch_embeddings):
                 # Skip already processed documents
                 if processed_count <= last_processed_index:
                     processed_count += 1
-                    # Still collect doc_id for sync
-                    all_new_doc_ids.append(document["sid"])
                     continue
                 doc_id = document["sid"]
                 chunk_index = document["chunk_index"]
@@ -1655,8 +1587,6 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     chunk_text,
                     embeddings,
                 )
-
-                all_new_doc_ids.append(doc_id)
                 data_to_insert.append(new_data)
                 processed_count += 1
 
@@ -1680,256 +1610,296 @@ def process_sheets(target_dir: str, model: str = "BAAI/bge-m3", batch_size: int 
                     )
                     raise e
 
-        # All documents processed successfully
+    else:
+        logger.error(f"Unknown table name '{table_name}' for sheets processing")
+        raise ValueError(f"Unknown table name '{table_name}' for sheets processing")
+
+
+def process_sheets(
+    table_name: str,
+    model: str = "BAAI/bge-m3",
+    batch_size: int = 10,
+):
+    """
+    Process sheets data with checkpoint support for resume capability.
+
+    Args:
+        table_name (str): Name of the database table to insert data into
+        model (str): Model name for embedding generation
+        batch_size (int): Number of documents to process per batch
+    """
+
+    config = load_config(config_file_path=config_file_path)
+    data_sources = config.get(table_name.lower(), {})
+
+    for data_source_index, (data_source, attributes) in enumerate(data_sources.items()):
+        target_dir = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
+        make_chunks_sheets(
+            storage_dir=target_dir,
+            structured=True,
+            chunk_size=1500,
+            chunk_overlap=200,
+        )
+        json_path = os.path.join(target_dir, "sheets_as_chunks.json")
+        checkpoint = CheckpointManager(source_path=json_path)
+        last_processed_index = checkpoint.load()
+
+        with open(json_path, encoding="utf-8") as f:
+            documents = json.load(f)
+
+        total_documents = len(documents)
+        logger.info(
+            f"Total documents to process: {total_documents}, "
+            f"Starting from index: {last_processed_index + 1}"
+        )
+
+        corpus_name = target_dir.split("/")[-1]
+        corpus_handler = CorpusHandler.create_handler(corpus_name, documents)
+
+        if last_processed_index == -1 and data_source_index == 0:
+            logger.info("Starting processing from the beginning. Refreshing the table.")
+
+            with refresh_table(table_name, model):
+                _process_sheets_content(
+                    table_name=table_name,
+                    corpus_handler=corpus_handler,
+                    checkpoint=checkpoint,
+                    last_processed_index=last_processed_index,
+                    batch_size=batch_size,
+                    model=model,
+                )
+        else:
+            logger.info(f"Starting from checkpoint index {last_processed_index + 1}")
+            _process_sheets_content(
+                table_name=table_name,
+                corpus_handler=corpus_handler,
+                checkpoint=checkpoint,
+                last_processed_index=last_processed_index,
+                batch_size=batch_size,
+                model=model,
+            )
+
         checkpoint.remove()
         logger.info(
             f"Successfully processed all {total_documents} documents for {table_name}"
         )
 
-        # Sync obsolete doc_ids (remove entries not in all_new_doc_ids) as the file we are processing is the new full dataset
-        sync_obsolete_doc_ids(
-            table_name=table_name,
-            old_doc_ids=all_old_doc_ids,
-            new_doc_ids=all_new_doc_ids,
-        )
 
-    else:
-        logger.error(
-            f"Unknown table name '{table_name}' for target directory '{target_dir}'."
-        )
-        raise ValueError(
-            f"Unknown table name '{table_name}' for target directory '{target_dir}'."
-        )
-
-
-def process_data(base_folder: str, streaming: bool = True, model: str = "BAAI/bge-m3"):
+def process_data(table_name: str, streaming: bool = True, model: str = "BAAI/bge-m3"):
     """
     Processes data files located in the specified base folder according to its type.
     Depending on the value of `base_folder`, this function performs several operations.
 
     Args:
-        base_folder (str): The path to the base folder containing the data to process.
+        table_name (str): The name of the table to process.
         streaming (bool, optional): If True, processes DILA archive files in streaming mode, without extraction (default: True).
         If False, extracts the archive files before processing.
         model (str, optional): The model to use for processing (default: "BAAI/bge-m3").
-
-    Raises:
-        Any exceptions raised by the underlying processing or file operations are propagated.
     """
+    config = load_config(config_file_path=config_file_path)
+    data_sources = config.get(table_name.lower(), {})
+    for data_source_index, (data_source, attributes) in enumerate(data_sources.items()):
+        base_folder = os.path.join(BASE_PATH, attributes.get("download_folder", ""))
 
-    if STATE_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(
-        base_folder
-    ) or LOCAL_ADMINISTRATIONS_DIRECTORY_FOLDER.endswith(base_folder):
-        logger.info(f"Processing directory files located in : {base_folder}")
-        process_directories(
-            target_dir=base_folder,
-            config_file_path="config/data_config.json",
-            model=model,
-        )
-        logger.info(
+        if attributes.get("type") == "directory":
+            logger.info(f"Processing directory files located in : {base_folder}")
+            process_directories(
+                table_name=table_name,
+                model=model,
+            )
+
+            logger.info(
+                logger.info(
+                    f"Folder: {base_folder} successfully processed and data successfully inserted into the postgres database"
+                )
+            )
+
+            remove_folder(folder_path=base_folder)
+            logger.debug(f"Folder: {base_folder} successfully removed after processing")
+        elif attributes.get("type") == "data_gouv":
+            logger.info(f"Processing files located in : {base_folder}")
+
+            process_data_gouv_files(table_name=table_name, model=model)
+
             logger.info(
                 f"Folder: {base_folder} successfully processed and data successfully inserted into the postgres database"
             )
-        )
 
-        remove_folder(folder_path=base_folder)
-        logger.debug(f"Folder: {base_folder} successfully removed after processing")
-    elif DATA_GOUV_DATASETS_CATALOG_DATA_FOLDER.endswith(base_folder):
-        logger.info(f"Processing files located in : {base_folder}")
+            remove_folder(folder_path=base_folder)
+            logger.debug(f"Folder: {base_folder} successfully removed after processing")
+        elif attributes.get("type") == "sheets":
+            if (
+                data_source_index == 0
+            ):  # To start process only once, as there can be multiple data sources for sheets type
+                logger.info(f"Processing files located in : {base_folder}")
 
-        process_data_gouv_files(target_dir=base_folder, model=model)
+                process_sheets(
+                    table_name=table_name,
+                    model=model,
+                )
 
-        logger.info(
-            f"Folder: {base_folder} successfully processed and data successfully inserted into the postgres database"
-        )
+                logger.info(
+                    f"Folder: {base_folder} successfully processed and data successfully inserted into the postgres database"
+                )
 
-        remove_folder(folder_path=base_folder)
-        logger.debug(f"Folder: {base_folder} successfully removed after processing")
-    elif TRAVAIL_EMPLOI_DATA_FOLDER.endswith(base_folder):
-        logger.info(f"Processing files located in : {base_folder}")
+                remove_folder(folder_path=base_folder)
+                logger.debug(
+                    f"Folder: {base_folder} successfully removed after processing"
+                )
+            else:
+                pass
 
-        make_chunks_sheets(
-            storage_dir=base_folder,
-            structured=True,
-            chunk_size=1500,
-            chunk_overlap=200,
-        )
+        elif attributes.get("type") == "dila_folder":
+            if table_name == "cnil":
+                target_dir_freemium = os.path.join(base_folder, "cnil/global/CNIL/TEXT")
+            elif table_name == "constit":
+                target_dir_freemium = os.path.join(
+                    base_folder, "constit/global/CONS/TEXT"
+                )
+            elif table_name == "dole":
+                target_dir_freemium = os.path.join(base_folder, "dole/global/JORF/DOLE")
+            elif table_name == "legi":
+                target_dir_freemium = os.path.join(
+                    base_folder, "legi/global/code_et_TNC_en_vigueur"
+                )
+            else:
+                logger.error(
+                    f"Unknown base folder '{base_folder}' for processing data."
+                )
+                raise ValueError(
+                    f"Unknown base folder '{base_folder}' for processing data."
+                )
 
-        process_sheets(target_dir=base_folder, model=model)
+            if streaming:
+                all_entities = sorted(
+                    [f for f in os.listdir(base_folder) if f.endswith(".tar.gz")]
+                )
+                # Placing the freemium file at the beginning
+                try:
+                    freemium_file = next(
+                        (
+                            file
+                            for file in all_entities
+                            if file.lower().startswith("freemium")
+                        ),
+                        None,
+                    )
+                    all_entities.remove(freemium_file)
+                    all_entities.insert(0, freemium_file)
+                except ValueError:
+                    logger.debug(f"There is no freemium file in {all_entities}")
+                all_entities = [os.path.join(base_folder, f) for f in all_entities]
 
-        logger.info(
-            f"Folder: {base_folder} successfully processed and data successfully inserted into the postgres database"
-        )
+                for entity in (
+                    all_entities
+                ):  # entity is the name of each tar.gz file inside the base_folder
+                    # Remove obscolete CIDs from the table based on the suppression list file
+                    try:
+                        with tarfile.open(entity, "r:gz") as tar:
+                            for member in tar.getmembers():
+                                if member.isfile() and os.path.basename(
+                                    member.name
+                                ).startswith("liste_suppression"):
+                                    file_object = tar.extractfile(member)
 
-        remove_folder(folder_path=base_folder)
-        logger.debug(f"Folder: {base_folder} successfully removed after processing")
+                                    if file_object:
+                                        with file_object as f:
+                                            lines = (
+                                                f.read().decode("utf-8").splitlines()
+                                            )
+                                        _handle_dila_suppression_list(
+                                            lines=lines,
+                                            table_name=table_name,
+                                            source_name=entity,
+                                        )
+                                        break  # As we found the suppression list, no need to continue
+                    except Exception as e:
+                        logger.error(
+                            f"Error while finding suppression list from archive {entity}: {e}"
+                        )
+                        continue
 
-    elif SERVICE_PUBLIC_PRO_DATA_FOLDER.endswith(
-        base_folder
-    ) or SERVICE_PUBLIC_PART_DATA_FOLDER.endswith(base_folder):
-        logger.info(f"Processing files located in : {base_folder}")
+                    # Process the XML files in the archive file
+                    process_dila_xml_files(
+                        source_path=entity, streaming=streaming, model=model
+                    )
+                    logger.info(f"File: {entity} successfully processed")
 
-        make_chunks_sheets(
-            storage_dir=base_folder,
-            structured=True,
-            chunk_size=1500,
-            chunk_overlap=200,
-        )
-        process_sheets(target_dir=base_folder, model=model)
+            else:
+                all_entities = sorted(os.listdir(base_folder))
+                try:
+                    all_entities.remove(table_name)
+                    all_entities.insert(
+                        0, table_name
+                    )  # Placing the {table_name} folder at the beginning which corresponds to the freemium exctraction (e.g. 'dole' for DOLE_DATA_FOLDER)
+                except ValueError:
+                    logger.debug(
+                        f"There is no '{table_name}' directory in {base_folder}"
+                    )
 
-        logger.info(
-            f"Folder: {base_folder} successfully processed and data successfully inserted into the postgres database"
-        )
+                for root_dir in (
+                    all_entities
+                ):  # root_dir is the name of each folder inside the base_folder
+                    # Remove obscolete CIDs from the table based on the suppression list file
+                    current_dir = os.path.join(base_folder, root_dir)
+                    for entity in os.listdir(current_dir):
+                        if entity.startswith("liste_suppression"):
+                            try:
+                                # doc_id_to_remove = []
+                                with open(os.path.join(current_dir, entity)) as f:
+                                    lines = f.readlines()
+                                    _handle_dila_suppression_list(
+                                        lines=lines,
+                                        table_name=table_name,
+                                        source_name=entity,
+                                    )
+                            except Exception as e:
+                                logger.error(
+                                    f"Error removing document IDs based on suppression list: {e}"
+                                )
+                                raise Exception(
+                                    f"Error removing document IDs based on suppression list: {e}"
+                                )
 
-        remove_folder(folder_path=base_folder)
-        logger.debug(f"Folder: {base_folder} successfully removed after processing")
+                    # Process the XML files in the target directory
+                    target_dir = os.path.join(
+                        base_folder, root_dir, "legi/global/code_et_TNC_en_vigueur"
+                    )
 
-    else:  # For DILA's files
-        if CNIL_DATA_FOLDER.endswith(base_folder):
-            table_name = "cnil"
-            target_dir_freemium = os.path.join(base_folder, "cnil/global/CNIL/TEXT")
-        elif CONSTIT_DATA_FOLDER.endswith(base_folder):
-            table_name = "constit"
-            target_dir_freemium = os.path.join(base_folder, "constit/global/CONS/TEXT")
-        elif DOLE_DATA_FOLDER.endswith(base_folder):
-            table_name = "dole"
-            target_dir_freemium = os.path.join(base_folder, "dole/global/JORF/DOLE")
-        elif LEGI_DATA_FOLDER.endswith(base_folder):
-            table_name = "legi"
-            target_dir_freemium = os.path.join(
-                base_folder, "legi/global/code_et_TNC_en_vigueur"
-            )
+                    if root_dir == table_name:
+                        # This is the freemium extracted folder
+                        target_dir = target_dir_freemium
+
+                    logger.info(f"Processing folder: {target_dir}")
+
+                    process_dila_xml_files(
+                        source_path=target_dir, streaming=streaming, model=model
+                    )
+                    logger.info(
+                        f"Folder: {target_dir} successfully processed and data successfully inserted into the database"
+                    )
+
+                    remove_folder(folder_path=current_dir)
+                    logger.debug(
+                        f"Folder: {current_dir} successfully removed after processing"
+                    )
         else:
             logger.error(f"Unknown base folder '{base_folder}' for processing data.")
             raise ValueError(
                 f"Unknown base folder '{base_folder}' for processing data."
             )
 
-        if not streaming:
-            all_entities = sorted(os.listdir(base_folder))
-            try:
-                all_entities.remove(table_name)
-                all_entities.insert(
-                    0, table_name
-                )  # Placing the {table_name} folder at the beginning which corresponds to the freemium exctraction (e.g. 'dole' for DOLE_DATA_FOLDER)
-            except ValueError:
-                logger.debug(f"There is no '{table_name}' directory in {base_folder}")
 
-            for root_dir in (
-                all_entities
-            ):  # root_dir is the name of each folder inside the base_folder
-                # Remove obscolete CIDs from the table based on the suppression list file
-                current_dir = os.path.join(base_folder, root_dir)
-                for entity in os.listdir(current_dir):
-                    if entity.startswith("liste_suppression"):
-                        try:
-                            # doc_id_to_remove = []
-                            with open(os.path.join(current_dir, entity)) as f:
-                                lines = f.readlines()
-                                _handle_dila_suppression_list(
-                                    lines=lines,
-                                    table_name=table_name,
-                                    source_name=entity,
-                                )
-                        except Exception as e:
-                            logger.error(
-                                f"Error removing document IDs based on suppression list: {e}"
-                            )
-                            raise Exception(
-                                f"Error removing document IDs based on suppression list: {e}"
-                            )
-
-                # Process the XML files in the target directory
-                target_dir = os.path.join(
-                    base_folder, root_dir, "legi/global/code_et_TNC_en_vigueur"
-                )
-
-                if root_dir == table_name:
-                    # This is the freemium extracted folder
-                    target_dir = target_dir_freemium
-
-                logger.info(f"Processing folder: {target_dir}")
-
-                process_dila_xml_files(
-                    source_path=target_dir, streaming=streaming, model=model
-                )
-                logger.info(
-                    f"Folder: {target_dir} successfully processed and data successfully inserted into the database"
-                )
-
-                remove_folder(folder_path=current_dir)
-                logger.debug(
-                    f"Folder: {current_dir} successfully removed after processing"
-                )
-
-        if streaming:
-            all_entities = sorted(
-                [f for f in os.listdir(base_folder) if f.endswith(".tar.gz")]
-            )
-            # Placing the freemium file at the beginning
-            try:
-                freemium_file = next(
-                    (
-                        file
-                        for file in all_entities
-                        if file.lower().startswith("freemium")
-                    ),
-                    None,
-                )
-                all_entities.remove(freemium_file)
-                all_entities.insert(0, freemium_file)
-            except ValueError:
-                logger.debug(f"There is no freemium file in {all_entities}")
-            all_entities = [os.path.join(base_folder, f) for f in all_entities]
-
-            for entity in (
-                all_entities
-            ):  # entity is the name of each tar.gz file inside the base_folder
-                # Remove obscolete CIDs from the table based on the suppression list file
-                try:
-                    with tarfile.open(entity, "r:gz") as tar:
-                        for member in tar.getmembers():
-                            if member.isfile() and os.path.basename(
-                                member.name
-                            ).startswith("liste_suppression"):
-                                file_object = tar.extractfile(member)
-
-                                if file_object:
-                                    with file_object as f:
-                                        lines = f.read().decode("utf-8").splitlines()
-                                    _handle_dila_suppression_list(
-                                        lines=lines,
-                                        table_name=table_name,
-                                        source_name=entity,
-                                    )
-                                    break  # On a trouvé la liste, on arrête de chercher
-                except Exception as e:
-                    logger.error(
-                        f"Error while finding suppression list from archive {entity}: {e}"
-                    )
-                    continue
-
-                # Process the XML files in the archive file
-                process_dila_xml_files(
-                    source_path=entity, streaming=streaming, model=model
-                )
-                logger.info(f"File: {entity} successfully processed")
-
-
-def process_all_data(unprocessed_data_folder: str, model: str = "BAAI/bge-m3"):
+def process_all_data(source_map: str = SOURCE_MAP, model: str = "BAAI/bge-m3"):
     """
     Processes all data directories within the specified unprocessed data folder.
 
     Args:
         unprocessed_data_folder (str): Path to the folder containing unprocessed data directories.
 
-    Returns:
-        None
-
     Note:
         This function iterates over the contents of the given folder, constructs the full path for each subdirectory,
         and processes the data using the `process_data` function.
     """
-    for directory in os.listdir(unprocessed_data_folder):
-        base_folder = os.path.join(unprocessed_data_folder, directory)
-        process_data(base_folder=base_folder, model=model)
+    for table_name in source_map:
+        process_data(table_name=table_name, model=model)
