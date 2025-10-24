@@ -245,7 +245,8 @@ class HuggingFace:
             file_name (str): The base name for the file to be renamed.
         """
         repo_id = f"{self.hugging_face_repo}/{dataset_name}"
-        representative_file_path = f"data/{dataset_name}-latest/{dataset_name}_part_0.parquet"  # Chosing only the first part to get its upload date
+        file_prefix = dataset_name.replace("-", "_")
+        representative_file_path = f"data/{dataset_name}-latest/{file_prefix}_part_0.parquet"  # Chosing only the first part to get its upload date
         old_file_date = self.get_file_upload_date(
             dataset_name=dataset_name, hf_file_path=representative_file_path
         )
@@ -386,7 +387,7 @@ class HuggingFace:
         try:
             log = load_data_history(data_history_path=data_history_path)
             date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            for file_name in SOURCE_MAP[dataset_name.lower()]:
+            for file_name in SOURCE_MAP[dataset_name.lower().replace("-", "_")]:
                 if not log.get(file_name):
                     log[file_name] = {}
                 log[file_name]["last_hf_upload_date"] = date
