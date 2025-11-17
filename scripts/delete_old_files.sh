@@ -121,8 +121,23 @@ else
 	log "WARNING" "Configuration backup folder $CONFIG_BACKUP_FOLDER does not exist." 
 fi
 
-# 5. Docker Cleanup
-notify_step "📌 Step 5: Docker Cleanup"
+# 5. Clean up Hugging Face cache
+notify_step "📌 Step 5: Cleaning Hugging Face cache"
+HF_CACHE_DIR="$HOME/.cache/huggingface/hub"
+if [ -d "$HF_CACHE_DIR" ]; then
+    log "INFO" "Removing Hugging Face cache directory: $HF_CACHE_DIR"
+    if rm -rf "$HF_CACHE_DIR"; then
+        log "INFO" "Hugging Face cache directory removed successfully."
+    else
+        log "ERROR" "Failed to remove Hugging Face cache directory."
+        send_tchap_notification "### ❌ **ERROR: Failed to remove Hugging Face cache**"
+    fi
+else
+    log "WARNING" "Hugging Face cache directory does not exist at $HF_CACHE_DIR."
+fi
+
+# 6. Docker Cleanup
+notify_step "📌 Step 6: Docker Cleanup"
 if command -v docker &> /dev/null; then
     # Clean up dangling build cache
     log "INFO" "Pruning Docker builder cache..."
