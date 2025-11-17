@@ -87,8 +87,23 @@ log "INFO" "========================================="
 send_tchap_notification "# 🚀💾 Backup - Starting process..."
 send_tchap_notification "🕒 **Date:** $(date '+%Y-%m-%d %H:%M:%S')"
 
-# 1. PostgreSQL backup
-notify_step "📌 Step 1: PostgreSQL Database Backup"
+# 1. Cleanup old files before backup
+notify_step "📌 Step 1: Cleaning Old Files"
+DELETE_OLD_FILES_SCRIPT="$PROJECT_DIR/scripts/delete_old_files.sh"
+if [ -f "$DELETE_OLD_FILES_SCRIPT" ]; then
+    log "INFO" "Executing delete_old_files.sh script..."
+    if bash "$DELETE_OLD_FILES_SCRIPT" 2>>"$LOG_FILE"; then
+        log "INFO" "Old files cleanup completed successfully"
+    else
+        log "WARNING" "Old files cleanup script failed, still continuing with backup"
+        send_tchap_notification "### ⚠️ **WARNING: Old files cleanup script failed, still continuing with backup**"
+    fi
+else
+    log "WARNING" "delete_old_files.sh script not found at $DELETE_OLD_FILES_SCRIPT. Skipping cleanup."
+fi
+
+# 2. PostgreSQL backup
+notify_step "📌 Step 2: PostgreSQL Database Backup"
 if docker exec "$CONTAINER_NAME" pg_dump \
     -U "$DB_USER" \
     -d "$DB_NAME" \
@@ -118,8 +133,8 @@ fi
 docker exec "$CONTAINER_NAME" rm -f "/tmp/pg_backup_$DATE.dump"
 log "INFO" "Temporary files cleaned from container"
 
-# 2. Critical configuration files backup
-notify_step "📌 Step 2: Configuration Files Backup"
+# 3. Critical configuration files backup
+notify_step "📌 Step 3: Configuration Files Backup"
 
 CONFIG_ARCHIVE="$CONFIG_BACKUP_DIR/config_backup_$DATE.tar.gz"
 log "INFO" "Creating configuration archive..."
@@ -130,13 +145,13 @@ tar -czf "$CONFIG_ARCHIVE" \
     pyproject.toml \
     2>/dev/null || log "WARNING : Some config files missing"
 
-# 3. Final PostgreSQL compression
-notify_step "📌 Step 3: Final Compression"
+# 4. Final PostgreSQL compression
+notify_step "📌 Step 4: Final Compression"
 gzip "$PG_BACKUP_DIR/pg_backup_$DATE.dump"
 
-# 4. Final report
+# 5. Final report
 log "INFO" "========================================="
-log "INFO" "📌 Step 4: Final Report"
+log "INFO" "📌 Step 5: Final Report"
 log "INFO" "========================================="
 
 log "INFO" "Backup completed:"
