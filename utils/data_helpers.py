@@ -6,7 +6,6 @@ import shutil
 import tarfile
 from datetime import datetime
 
-import duckdb
 import psycopg2
 import requests
 from tqdm import tqdm
@@ -19,7 +18,6 @@ from config import (
     POSTGRES_PORT,
     POSTGRES_USER,
     get_logger,
-    parquet_files_folder,
 )
 
 from .sheets_parser import RagSource
@@ -342,195 +340,13 @@ def remove_file(file_path: str):
         logger.info(f"File {file_path} does not exist")
 
 
-def export_table_to_parquet(
-    table_name: str,
-    output_folder: str = parquet_files_folder,
-    rows_per_file: int = 50000,
-):
+def _extract_distinct_data(data_type: str, source_table: str = "legi") -> list[str]:
     """
-    Exports tables from the PostgreSQL database to Parquet files.
-    Groups rows by doc_id to ensure all chunks of the same document stay together.
+    Extract distinct data from a PostgreSQL table.
 
     Args:
-        table_name (str): The name of the table to export, or "all" for all tables.
-        output_folder (str): The path where the Parquet files will be saved.
-        rows_per_file (int): Target number of rows per file. Defaults to 50000.
-                            Actual count may vary to keep doc_id groups intact.
-
-    Returns:
-        None
-    """
-    try:
-        conn = duckdb.connect()
-        conn.execute("INSTALL postgres")
-        conn.execute("LOAD postgres")
-
-        conn.execute(f"""
-            ATTACH 'postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}' 
-            AS postgres_db (TYPE postgres)
-        """)
-
-        def _export_single_table(table_name: str):
-            """Exports a single table, grouping by doc_id into multiple Parquet files."""
-            try:
-                # Count total rows in the table
-                conn.execute(f"SELECT COUNT(*) FROM postgres_db.{table_name}")
-                table_row_count = conn.fetchone()[0]
-
-                if table_row_count == 0:
-                    logger.warning(f"No data found in table '{table_name}', skipping.")
-                    return
-
-                # Retrieve all doc_id with their chunk count, sorted
-                conn.execute(f"""
-                    SELECT doc_id, COUNT(*) as chunk_count 
-                    FROM postgres_db.{table_name} 
-                    GROUP BY doc_id 
-                    ORDER BY doc_id
-                """)
-                doc_id_counts = conn.fetchall()
-
-                total_doc_ids = len(doc_id_counts)
-                logger.info(
-                    f"Exporting {table_row_count} rows from table '{table_name}' "
-                    f"({total_doc_ids} distinct doc_ids)..."
-                )
-
-                os.makedirs(os.path.join(output_folder, table_name), exist_ok=True)
-
-                file_index = 0
-                current_batch_doc_ids = []
-                current_row_count = 0
-
-                for doc_id, chunk_count in doc_id_counts:
-                    # If adding this doc_id exceeds the limit AND we already have doc_ids
-                    if current_batch_doc_ids and (
-                        current_row_count + chunk_count > rows_per_file
-                    ):
-                        # Export the current batch
-                        _export_batch(
-                            conn=conn,
-                            table_name=table_name,
-                            doc_ids=current_batch_doc_ids,
-                            file_index=file_index,
-                            output_folder=output_folder,
-                            row_count=current_row_count,
-                        )
-                        file_index += 1
-                        current_batch_doc_ids = []
-                        current_row_count = 0
-
-                    # Add this doc_id to the current batch
-                    current_batch_doc_ids.append(doc_id)
-                    current_row_count += chunk_count
-
-                # Export the last batch if there are remaining doc_ids
-                if current_batch_doc_ids:
-                    _export_batch(
-                        conn=conn,
-                        table_name=table_name,
-                        doc_ids=current_batch_doc_ids,
-                        file_index=file_index,
-                        output_folder=output_folder,
-                        row_count=current_row_count,
-                    )
-                    file_index += 1
-
-                # Check the total number of rows exported
-                global_path = os.path.join(
-                    output_folder, table_name, f"{table_name}_part_*.parquet"
-                )
-                parquet_row_count = conn.execute(
-                    f"SELECT COUNT(*) FROM read_parquet('{global_path}')"
-                ).fetchone()[0]
-
-                logger.info(
-                    f"Successfully exported table '{table_name}': "
-                    f"{table_row_count} rows -> {parquet_row_count} rows in {file_index} file(s)."
-                )
-
-            except Exception as table_error:
-                logger.error(f"Error processing table '{table_name}': {table_error}")
-                if table_name != "all":
-                    raise
-
-        def _export_batch(
-            conn,
-            table_name: str,
-            doc_ids: list,
-            file_index: int,
-            output_folder: str,
-            row_count: int,
-        ):
-            """Exports a batch of doc_ids to a single Parquet file."""
-            output_path = os.path.join(
-                output_folder, table_name, f"{table_name}_part_{file_index}.parquet"
-            )
-
-            # Creating WHERE clause
-            doc_ids_escaped = [doc_id.replace("'", "''") for doc_id in doc_ids]
-            doc_ids_str = "', '".join(doc_ids_escaped)
-
-            logger.debug(
-                f"Exporting part {file_index}: {len(doc_ids)} doc_ids, "
-                f"~{row_count} rows to {output_path}"
-            )
-
-            has_chunk_index = (
-                conn.execute(
-                    f"""SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND LOWER(table_name) = LOWER('{table_name}') AND column_name = 'chunk_index'"""
-                ).fetchone()[0]
-                > 0
-            )
-
-            if has_chunk_index:
-                conn.execute(f"""
-                    COPY (
-                        SELECT * FROM postgres_db.{table_name}
-                        WHERE doc_id IN ('{doc_ids_str}')
-                        ORDER BY doc_id, chunk_index
-                    ) TO '{output_path}'
-                    (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
-                """)
-            else:
-                conn.execute(f"""
-                COPY (
-                    SELECT * FROM postgres_db.{table_name}
-                    WHERE doc_id IN ('{doc_ids_str}')
-                    ORDER BY doc_id
-                ) TO '{output_path}'
-                (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
-            """)
-
-        os.makedirs(output_folder, exist_ok=True)
-
-        if table_name == "all":
-            conn.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema='public' AND table_type='BASE TABLE';"
-            )
-            tables = [row[0] for row in conn.fetchall()]
-            logger.info(f"Found {len(tables)} tables to export: {tables}")
-
-            for table in tables:
-                _export_single_table(table_name=table)
-        else:
-            _export_single_table(table_name=table_name)
-
-    except Exception as e:
-        logger.error(f"An error occurred during SQL Table export: {e}")
-        raise
-    finally:
-        if "conn" in locals():
-            conn.close()
-
-
-def extract_legi_data(data_type: str) -> list[str]:
-    """
-    Extract distinct data from the 'legi' PostgreSQL table.
-
-    Args:
-        data_type (str): Type of data to extract - 'categories' or 'codes'
+        data_type (str): Type of data to extract - e.g : 'category' or 'codes'
+        source_table (str): Name of the source table, default is 'legi'
 
     Returns:
         list[str]: List of distinct categories or code titles, empty list for invalid type
@@ -546,23 +362,110 @@ def extract_legi_data(data_type: str) -> list[str]:
     )
     cursor = conn.cursor()
 
-    if data_type == "categories":
-        # Listing all distinct categories in the 'legi' table
-        cursor.execute("""SELECT DISTINCT category FROM legi""")
-        data_list = [row[0] for row in cursor.fetchall()]
-    elif data_type == "codes":
+    if data_type == "codes":
         # Listing all titles for 'CODE' category in the 'legi' table
-        cursor.execute("""
-            SELECT DISTINCT full_title FROM legi WHERE category = 'CODE'
+        cursor.execute(f"""
+            SELECT DISTINCT full_title FROM {source_table.upper()} WHERE category = 'CODE'
         """)
         data_list = list(
             set(title[0].split(",")[0].strip() for title in cursor.fetchall())
         )
     else:
-        data_list = []
+        # Listing all distinct {data_type} in the table
+        cursor.execute(
+            f"""SELECT DISTINCT {data_type.lower()} FROM {source_table.upper()}"""
+        )
+        data_list = [row[0] for row in cursor.fetchall()]
 
     conn.close()
     return data_list
+
+
+def correct_wrong_column_contents(
+    table_name: str, column_to_correct: str, column_helper: str
+) -> str:
+    """
+    Correct null or empty content in a column using a helper column for prefix matching.
+    Built to correct 'category' column in the 'legi' table.
+
+    Args:
+        table_name: Table to correct
+        column_to_correct: Column with missing/empty values
+        column_helper: Helper column used for matching
+
+    Returns:
+        Success message with correction count
+    """
+    # Get valid values and create lookup dict
+    valid_values = _extract_distinct_data(
+        data_type=column_to_correct, source_table=table_name
+    )
+    valid_values = [v for v in valid_values if v and v.strip()]
+
+    if not valid_values:
+        logger.warning(f"No valid values found for '{column_to_correct}'")
+        return "No corrections needed - no valid values found."
+
+    logger.info(f"Found {len(valid_values)} valid values for '{column_to_correct}'")
+
+    # Connect to database
+    conn = psycopg2.connect(
+        host=POSTGRES_HOST,
+        port=POSTGRES_PORT,
+        dbname=POSTGRES_DB,
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+    )
+
+    try:
+        cursor = conn.cursor()
+
+        # Get rows to correct
+        cursor.execute(f"""
+            SELECT chunk_id, {column_helper}
+            FROM {table_name.upper()}
+            WHERE {column_to_correct} IS NULL OR {column_to_correct} = ''
+        """)
+        rows_to_correct = cursor.fetchall()
+
+        if not rows_to_correct:
+            logger.info(f"No rows to correct in '{column_to_correct}'")
+            return "No corrections needed - all rows valid."
+
+        logger.info(f"Processing {len(rows_to_correct)} rows...")
+        # Process and update rows
+        corrections = 0
+        for chunk_id, helper_value in rows_to_correct:
+            if not helper_value:
+                continue
+
+            # Find matching value by prefix
+            formatted = format_to_table_name(helper_value).upper()
+            matched = next(
+                (
+                    valid_value
+                    for valid_value in valid_values
+                    if formatted.startswith(valid_value)
+                ),
+                None,
+            )
+
+            if matched:
+                cursor.execute(
+                    f"UPDATE {table_name.upper()} SET {column_to_correct} = %s WHERE chunk_id = %s",
+                    (matched, chunk_id),
+                )
+                corrections += 1
+
+        conn.commit()
+        logger.info(f"Successfully corrected {corrections}/{len(rows_to_correct)} rows")
+
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error correcting '{column_to_correct}': {e}")
+        raise
+    finally:
+        conn.close()
 
 
 def format_to_table_name(name: str) -> str:
@@ -585,6 +488,8 @@ def format_to_table_name(name: str) -> str:
         "'": "_",
         " ": "_",
         "`": "_",
+        "-": "_",
+        ",": "_",
         "(": "",
         ")": "",
     }.items():

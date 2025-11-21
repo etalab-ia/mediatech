@@ -10,13 +10,13 @@ from .chunking_and_embedding import (
     make_chunks_sheets,
 )
 from .data_helpers import (
+    _extract_distinct_data,
     _make_schedule,
+    correct_wrong_column_contents,
     doc_to_chunk,
     download_file,
-    export_table_to_parquet,
     extract_and_remove_tar_file,
     extract_and_remove_tar_files,
-    extract_legi_data,
     file_sha256,
     format_model_name,
     format_subtitles,

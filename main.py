@@ -7,8 +7,8 @@ Usage:
     main.py download_and_process_files (--all | --source=<source>) [--model=<model_name>] [--debug]
     main.py create_tables [--model=<model_name>] [--delete-existing] [--debug]
     main.py process_files (--all | --source=<source>) [--folder=<path>] [--model=<model_name>] [--debug]
-    main.py split_table (--source=<source>) [--debug]
-    main.py export_table (--table=<name> | --all) [--output=<path>] [--debug]
+    main.py split_table (--table=<name>) [--debug]
+    main.py export_table (--table=<name>) [--output=<path>] [--split] [--debug]
     main.py upload_dataset (--all | --dataset-name=<name>) [--input=<path>] [--repository=<name>] [--private] [--debug]
     main.py -h | --help
 
@@ -27,11 +27,13 @@ Options:
     --model=<model_name>    Embedding model name [default: BAAI/bge-m3]. It is mandatory to specify the same model for all commands.
     --source=<source>       Source to process (service_public, travail_emploi, legi, cnil,
                             state_administrations_directory, local_administrations_directory, constit, dole)
+    --table=<name>          Table name to export or split (legi, service_public, etc.)
     --folder=<path>         Folder containing unprocessed data
     --input=<path>          Input path of the dataset to upload
     --dataset-name=<name>   Name of the dataset to upload to Hugging Face
     --repository=<name>     Hugging Face repository name [default: AgentPublic]
     --output=<path>         Output folder for Parquet files
+    --split                 Split the table into smaller tables before exporting
     --private               Upload dataset as private on Hugging Face
     --debug                 Enable debug logging
     -h --help               Show this help message
@@ -43,9 +45,9 @@ Examples:
     main.py download_and_process_files --all --model BAAI/bge-m3
     main.py process_files --source service_public --model BAAI/bge-m3
     main.py process_files --all --folder data/unprocessed --model BAAI/bge-m3
-    main.py split_table --source legi
-    main.py export_table --table legi
-    main.py export_table --all --output data/parquet
+    main.py split_table --table legi
+    main.py export_table --table legi --split
+    main.py export_table --table all --output data/parquet
     main.py upload_dataset --input data/parquet/service_public.parquet --dataset-name service-public --repository AgentPublic --private
     main.py upload_dataset --all --repository AgentPublic
 """
@@ -65,14 +67,13 @@ from config import (
     parquet_files_folder,
     setup_logging,
 )
-from database import create_all_tables, split_legi_table
+from database import create_all_tables, export_table_to_parquet, split_legi_table
 from download_and_processing import (
     download_and_optionally_process_all_files,
     download_and_optionally_process_files,
     process_all_data,
     process_data,
 )
-from utils import export_table_to_parquet
 
 
 def main():
@@ -166,29 +167,27 @@ def main():
 
         # Split table into smaller tables based on several criteria
         elif args["split_table"]:
-            source = args["--source"] if args["--source"] else "unknown"
-            if source == "legi":
-                logger.info("Splitting LEGI table into smaller tables")
-                split_legi_table()
+            table = args["--table"] if args["--table"] else "unknown"
+            if table == "legi":
+                logger.info(f"Splitting {table.upper()} table into smaller tables")
+                split_legi_table(source_table=table, export_to_parquet=False)
             else:
-                logger.error(f"Splitting is not implemented for the {source} source.")
+                logger.error(f"Splitting is not implemented for the {table} table.")
                 return 1
 
         # Export tables to parquet
         elif args["export_table"]:
             output = args["--output"] or parquet_files_folder
-            if args["--all"]:
+            table = args["--table"] if args["--table"] else None
+            if table is not None:
                 logger.info(
-                    f"Exporting all PgVector tables to Parquet in folder: {output}"
+                    f"Exporting {table} PgVector tables to Parquet in folder: {output}"
                 )
-                export_table_to_parquet(table_name="all", output_folder=output)
-            else:
-                logger.info(
-                    f"Exporting {args['--table']} table to Parquet in folder: {output}"
-                )
-                export_table_to_parquet(
-                    table_name=args["--table"], output_folder=output
-                )
+                if args["--split"]:
+                    if table == "legi":
+                        split_legi_table(source_table=table, export_to_parquet=True)
+                else:
+                    export_table_to_parquet(table_name=table, parquet_folder=output)
 
         # Upload dataset to Hugging Face
         elif args["upload_dataset"]:

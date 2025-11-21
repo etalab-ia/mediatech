@@ -52,7 +52,7 @@ with DAG(
 
     export_table = BashOperator(
         task_id="export_table",
-        bash_command="mediatech export_table --table legi",
+        bash_command="mediatech export_table --table legi --split",
         on_execute_callback=get_start_notifier(),
         on_success_callback=get_success_notifier(),
         on_failure_callback=get_failure_notifier(),

@@ -1,7 +1,9 @@
 import json
+import os
 import uuid
 from contextlib import contextmanager
 
+import duckdb
 import psycopg2
 from fastembed import SparseTextEmbedding
 from psycopg2.extras import RealDictCursor
@@ -16,9 +18,10 @@ from config import (
     POSTGRES_USER,
     config_file_path,
     get_logger,
+    parquet_files_folder,
 )
 from utils import (
-    extract_legi_data,
+    _extract_distinct_data,
     format_model_name,
     format_to_table_name,
     generate_embeddings_with_retry,
@@ -65,7 +68,7 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
         embedding_size = len(probe_vector)
 
         model_name = format_model_name(model)
-
+        CONFIG_TABLES = ["table_mapping"]
         # Enabling Pgvector extension
         try:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
@@ -86,20 +89,8 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
         with open(config_file_path, "r") as file:
             config = json.load(file)
 
-        # Listing all the tables in the config file
-        table_names = []
-        for category, data in config.items():
-            if category.lower().startswith(
-                "service_public"
-            ):  # Gathering service public pro and part sheets in one table
-                if "SERVICE_PUBLIC" not in table_names:
-                    table_names.append("SERVICE_PUBLIC")
-                else:
-                    pass
-            elif category.lower() == "travail_emploi":
-                table_names.append("TRAVAIL_EMPLOI")
-            else:
-                table_names.append(category)
+        table_names = CONFIG_TABLES
+        table_names.extend([category for category in config.keys()])
 
         for table_name in table_names:
             if delete_existing:
@@ -126,29 +117,30 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                     f"Table '{table_name.upper()}' already exists in database {POSTGRES_DB}"
                 )
 
-                # Check if doc_id index exists
-                index_name = f"idx_{table_name.lower()}_doc_id"
-                cursor.execute(f"""
-                    SELECT EXISTS (
-                        SELECT 1 FROM pg_indexes 
-                        WHERE tablename = '{table_name.lower()}' 
-                        AND indexname = '{index_name}'
-                    );
-                """)
-                index_exists = cursor.fetchone()[0]
-
-                if not index_exists:
-                    logger.info(
-                        f"Creating missing index {index_name} on existing table..."
-                    )
+                if table_name.lower() not in CONFIG_TABLES:
+                    # Check if doc_id index exists
+                    index_name = f"idx_{table_name.lower()}_doc_id"
                     cursor.execute(f"""
-                        CREATE INDEX IF NOT EXISTS {index_name} 
-                        ON {table_name.upper()}(doc_id);
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_indexes 
+                            WHERE tablename = '{table_name.lower()}' 
+                            AND indexname = '{index_name}'
+                        );
                     """)
-                    conn.commit()
-                    logger.info(f"Index {index_name} created successfully")
-                else:
-                    logger.info(f"Index {index_name} already exists")
+                    index_exists = cursor.fetchone()[0]
+
+                    if not index_exists:
+                        logger.info(
+                            f"Creating missing index {index_name} on existing table..."
+                        )
+                        cursor.execute(f"""
+                            CREATE INDEX IF NOT EXISTS {index_name} 
+                            ON {table_name.upper()}(doc_id);
+                        """)
+                        conn.commit()
+                        logger.info(f"Index {index_name} created successfully")
+                    else:
+                        logger.info(f"Index {index_name} already exists")
 
             else:
                 # Create table if doesn't exist
@@ -364,13 +356,22 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                         )
                     """)
 
+                elif table_name.lower() == "table_mapping":
+                    cursor.execute("""
+                        CREATE TABLE TABLE_MAPPING (
+                            table_name VARCHAR(63) PRIMARY KEY,
+                            full_table_name VARCHAR NOT NULL
+                        )
+                    """)
+
                 # Create HNSW index for vector similarity search
                 try:
-                    cursor.execute(f"""
-                        CREATE INDEX ON {table_name.upper()} USING hnsw ("embeddings_{model_name}" vector_cosine_ops)
-                        WITH (m = 16, ef_construction = 128);
-                    """)
-                    logger.debug(f"HNSW index created on {table_name.upper()}")
+                    if table_name.lower() not in CONFIG_TABLES:
+                        cursor.execute(f"""
+                            CREATE INDEX ON {table_name.upper()} USING hnsw ("embeddings_{model_name}" vector_cosine_ops)
+                            WITH (m = 16, ef_construction = 128);
+                        """)
+                        logger.debug(f"HNSW index created on {table_name.upper()}")
                 except Exception as e:
                     logger.error(
                         f"Error creating HNSW index on {table_name.upper()} table: {e}"
@@ -379,13 +380,14 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
 
                 # Create index on doc_id for faster GROUP BY and WHERE operations
                 try:
-                    cursor.execute(f"""
-                        CREATE INDEX idx_{table_name.lower()}_doc_id 
-                        ON {table_name.upper()}(doc_id);
-                    """)
-                    logger.debug(
-                        f"B-tree index on doc_id created for {table_name.upper()}"
-                    )
+                    if table_name.lower() not in CONFIG_TABLES:
+                        cursor.execute(f"""
+                            CREATE INDEX idx_{table_name.lower()}_doc_id 
+                            ON {table_name.upper()}(doc_id);
+                        """)
+                        logger.debug(
+                            f"B-tree index on doc_id created for {table_name.upper()}"
+                        )
                 except Exception as e:
                     logger.error(
                         f"Error creating doc_id index on {table_name.upper()} table: {e}"
@@ -397,9 +399,51 @@ def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
                     f"Table '{table_name.upper()}' created successfully in database {POSTGRES_DB} with indexes"
                 )
 
+                # Mapping table entry
+                update_mapping_table(
+                    table_name=table_name[:63], full_table_name=table_name
+                )
+
     except Exception as e:
         logger.error(f"Error creating tables in PostgreSQL: {e}")
         raise e
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("PostgreSQL connection closed")
+
+
+def update_mapping_table(table_name: str, full_table_name: str):
+    """
+    Inserts or updates a mapping entry in the TABLE_MAPPING table.
+
+    Args:
+        table_name (str): The short name of the table (max 63 characters by default in PostgreSQL).
+        full_table_name (str): The full name of the table.
+    """
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO TABLE_MAPPING (table_name, full_table_name)
+            VALUES (%s, %s)
+            ON CONFLICT (table_name) DO UPDATE SET
+                full_table_name = EXCLUDED.full_table_name;
+        """,
+            (table_name, full_table_name),
+        )
+        conn.commit()
+        logger.debug(f"Inserted/Updated mapping: '{table_name}' -> '{full_table_name}'")
+    except Exception as e:
+        logger.error(f"Error inserting/updating mapping table: {e}")
     finally:
         if conn:
             conn.close()
@@ -517,6 +561,62 @@ def refresh_table(table_name: str, model: str = "BAAI/bge-m3"):
             logger.debug("PostgreSQL connection closed")
 
 
+def drop_table(table_name: str, cascade: bool = False):
+    """
+    Drop a PostgreSQL table.
+
+    Args:
+        table_name (str): Name of the table to drop
+        cascade (bool): If True, automatically drop objects that depend on the table.
+                       Defaults to False.
+
+    Raises:
+        Logs errors if any exception occurs during database operations.
+    """
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        cursor = conn.cursor()
+
+        # Check if table exists
+        cursor.execute(f"""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_name = '{table_name.lower()}'
+            );
+        """)
+
+        if not cursor.fetchone()[0]:
+            logger.warning(f"Table '{table_name.upper()}' does not exist")
+            return
+
+        # Drop the table
+        cascade_clause = "CASCADE" if cascade else ""
+        cursor.execute(f"DROP TABLE {table_name.upper()} {cascade_clause};")
+
+        conn.commit()
+        logger.info(
+            f"Table '{table_name.upper()}' dropped successfully from database {POSTGRES_DB}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error dropping table '{table_name.upper()}': {e}")
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("PostgreSQL connection closed")
+
+
 def create_table_from_existing(
     source_table: str, target_table: str, include_indexes: bool = True
 ):
@@ -580,10 +680,16 @@ def create_table_from_existing(
                 (LIKE {source_table.upper()} INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
             """)
 
+        # Register the table name mapping
+        update_mapping_table(
+            table_name=target_table.lower()[:63], full_table_name=target_table.lower()
+        )  # Truncate to 63 chars for PostgreSQL table name limit
+
         conn.commit()
         logger.info(
             f"Table structure successfully copied from '{source_table.upper()}' to '{target_table.upper()}'"
         )
+        logger.debug(f"Registered mapping: '{target_table}' -> '{target_table}'")
 
     except Exception as e:
         logger.error(f"Error copying table structure: {e}")
@@ -608,6 +714,7 @@ def _split_table(source_table: str, target_table: str, data_type: str, value: st
     Returns:
         None: Prints success/error messages to logs
     """
+    conn = None
     try:
         # Connect to PostgreSQL database
         conn = psycopg2.connect(
@@ -620,105 +727,367 @@ def _split_table(source_table: str, target_table: str, data_type: str, value: st
         cursor = conn.cursor()
 
         if data_type == "category":
-            cursor.execute(f"""
-            SELECT * FROM {source_table} WHERE LOWER(category) = '{value.lower()}'
-            """)
-            rows = cursor.fetchall()
-            if not rows:
-                logger.error(
-                    f"No data found for category '{value.upper()}' in table '{source_table.upper()}'"
-                )
-                return
-            else:
-                columns = [f'"{column[0]}"' for column in cursor.description]
-                placeholders = ", ".join(["%s"] * len(columns))
-                insert_query = f"""
-                INSERT INTO {target_table.upper()} ({", ".join(columns)})
-                VALUES ({placeholders})
-                ON CONFLICT (chunk_id) DO UPDATE SET
-                {", ".join([f"{col}=EXCLUDED.{col}" for col in columns if col != '"chunk_id"'])};
-                """
-                cursor.executemany(insert_query, rows)
-                conn.commit()
-                conn.close()
-                logger.info(
-                    f"Data inserted into table '{target_table.upper()}' for category '{value.upper()}'"
-                )
-        elif data_type == "code":
-            cursor.execute(f"""
-            SELECT * FROM LEGI WHERE LOWER(category) ='code' AND LOWER(unaccent(full_title)) LIKE LOWER(unaccent('%{value.lower().replace("'", "''")}%'))
-            """)
-            rows = cursor.fetchall()
-            if not rows:
-                logger.error(
-                    f"No data found for code '{value.upper()}' in table '{source_table.upper()}'"
-                )
-                return
-            else:
-                columns = [f'"{column[0]}"' for column in cursor.description]
-                placeholders = ", ".join(["%s"] * len(columns))
-                insert_query = f"""
-                INSERT INTO {target_table.upper()} ({", ".join(columns)})
-                VALUES ({placeholders})
-                ON CONFLICT (chunk_id) DO UPDATE SET
-                {", ".join([f"{col}=EXCLUDED.{col}" for col in columns if col != '"chunk_id"'])};
-                """
-                cursor.executemany(insert_query, rows)
-                conn.commit()
-                conn.close()
-                logger.info(
-                    f"Data successfully inserted into table '{target_table.upper()}' for code '{value.upper()}'"
-                )
+            select_query = f"""
+                SELECT * FROM {source_table.upper()} 
+                WHERE LOWER(category) = '{value.lower()}'
+            """
+        elif (
+            data_type == "code" and source_table.lower() == "legi"
+        ):  # Specific case for LEGI codes based on full_title
+            select_query = f"""
+                SELECT * FROM {source_table.upper()} 
+                WHERE LOWER(category) = 'code' 
+                AND LOWER(unaccent(full_title)) LIKE LOWER(unaccent('%{value.lower().replace("'", "''")}%'))
+            """
         else:
-            logger.error(f"Invalid type '{type}' specified.")
+            logger.error(f"Invalid type '{data_type}' specified.")
             return
+
+        # Executing the select query
+        cursor.execute(select_query)
+        rows = cursor.fetchall()
+
+        if not rows:
+            logger.error(
+                f"No data found for {data_type} '{value.upper()}' in table '{source_table.upper()}'"
+            )
+            return
+
+        # Retrieving column names
+        columns = [desc[0] for desc in cursor.description]
+
+        # Identify JSONB columns in the target table
+        cursor.execute(f"""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = '{target_table.lower()}' 
+            AND data_type = 'jsonb';
+        """)
+        jsonb_columns = {row[0] for row in cursor.fetchall()}
+        jsonb_indices = {i for i, col in enumerate(columns) if col in jsonb_columns}
+
+        # Convert JSONB columns (dict/list) to JSON strings
+        converted_rows = []
+        for row in rows:
+            converted_row = list(row)
+            for idx in jsonb_indices:
+                if converted_row[idx] is not None and isinstance(
+                    converted_row[idx], (dict, list)
+                ):
+                    converted_row[idx] = json.dumps(converted_row[idx])
+            converted_rows.append(tuple(converted_row))
+
+        # Construct the INSERT query
+        escaped_columns = [f'"{col}"' for col in columns]
+        placeholders = ", ".join(["%s"] * len(columns))
+        update_clause = ", ".join(
+            [f'"{col}"=EXCLUDED."{col}"' for col in columns if col != "chunk_id"]
+        )
+
+        insert_query = f"""
+            INSERT INTO {target_table.upper()} ({", ".join(escaped_columns)})
+            VALUES ({placeholders})
+            ON CONFLICT (chunk_id) DO UPDATE SET {update_clause};
+        """
+
+        # Execute the insertion
+        cursor.executemany(insert_query, converted_rows)
+        conn.commit()
+
+        logger.info(
+            f"Data successfully inserted into table '{target_table.upper()}' "
+            f"for {data_type} '{value.upper()}' ({len(converted_rows)} rows)"
+        )
+
     except Exception as e:
         logger.error(f"Error splitting table data: {e}")
+        if conn:
+            conn.rollback()
+        raise e
     finally:
         if conn:
             conn.close()
             logger.debug("PostgreSQL connection closed")
 
 
-def split_legi_table():
+def split_legi_table(source_table: str = "legi", export_to_parquet: bool = False):
     """
     Split the main legi table into separate tables based on codes and categories.
 
     Creates individual tables for each legal code and category, copying structure
     and data from the source legi table while maintaining indexes.
+
+    Args:
+        source_table (str): Name of the source legi table. Defaults to "legi".
+        export_to_parquet (bool): If True, exports the created tables to Parquet files
+                                  and drops them from the database. Defaults to False.
     """
-    legi_codes = extract_legi_data(data_type="codes")
-    legi_categories = extract_legi_data(data_type="categories")
+    legi_codes = _extract_distinct_data(data_type="codes", source_table=source_table)
+    legi_categories = _extract_distinct_data(
+        data_type="category", source_table=source_table
+    )
+
+    # Remove 'CODE' as it is already handled separately
     if "CODE" in legi_categories:
-        legi_categories.remove(
-            "CODE"
-        )  # Remove 'CODE' as it is already handled separately
+        legi_categories.remove("CODE")
 
-    for code in legi_codes:
-        create_table_from_existing(
-            source_table="legi",
-            target_table=f"legi_{format_to_table_name(code)}",
-            include_indexes=True,
-        )
-        _split_table(
-            source_table="legi",
-            target_table=f"legi_{format_to_table_name(code)}",
-            data_type="code",
-            value=code,
-        )
+    def _process_legi_split(items: list, data_type: str):
+        """
+        Helper to process codes or categories uniformly.
 
-    for category in legi_categories:
-        create_table_from_existing(
-            source_table="legi",
-            target_table=f"legi_{format_to_table_name(category)}",
-            include_indexes=True,
-        )
-        _split_table(
-            source_table="legi",
-            target_table=f"legi_{format_to_table_name(category)}",
-            data_type="category",
-            value=category,
-        )
+        Args:
+            items (list): List of codes or categories to process.
+            data_type (str): Type of data being processed ('code' or 'category').
+        """
+        for item in items:
+            if not item:
+                if data_type == "category":
+                    item = "uncategorized"
+                else:
+                    item = "misc"
+
+            target_table = f"{source_table.lower()}_{format_to_table_name(item)}"  # Full table name
+            truncated_target_table = target_table[:63]  # Truncated for PostgreSQL limit
+
+            create_table_from_existing(
+                source_table=source_table,
+                target_table=target_table,  # Automatically truncated to 63 chars by PostgreSQL (table name limit)
+                include_indexes=True,
+            )
+
+            _split_table(
+                source_table=source_table,
+                target_table=truncated_target_table,  # Truncate to 63 chars for PostgreSQL table name limit
+                data_type=data_type,
+                value=item,
+            )
+
+            if export_to_parquet:
+                try:
+                    export_table_to_parquet(table_name=truncated_target_table)
+                    drop_table(table_name=truncated_target_table)
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to export table {target_table} to Parquet: {e}"
+                    )
+
+    _process_legi_split(items=legi_codes, data_type="code")
+    _process_legi_split(items=legi_categories, data_type="category")
+
+
+def export_table_to_parquet(
+    table_name: str,
+    parquet_folder: str = parquet_files_folder,
+    rows_per_file: int = 50000,
+):
+    """
+    Exports tables from the PostgreSQL database to Parquet files.
+    Groups rows by doc_id to ensure all chunks of the same document stay together.
+
+    Args:
+        table_name (str): The name of the table to export, or "all" for all tables.
+        parquet_folder (str): The path where the Parquet files will be saved.
+        rows_per_file (int): Target number of rows per file. Defaults to 50000.
+                            Actual count may vary to keep doc_id groups intact.
+
+    Returns:
+        None
+    """
+    try:
+        conn = duckdb.connect()
+        conn.execute("INSTALL postgres")
+        conn.execute("LOAD postgres")
+
+        conn.execute(f"""
+            ATTACH 'postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}' 
+            AS postgres_db (TYPE postgres)
+        """)
+
+        def _export_single_table(table_name: str, folder_name: str = ""):
+            """Exports a single table, grouping by doc_id into multiple Parquet files."""
+            try:
+                # Count total rows in the table
+                conn.execute(f"SELECT COUNT(*) FROM postgres_db.{table_name}")
+                table_row_count = conn.fetchone()[0]
+
+                if table_row_count == 0:
+                    logger.warning(f"No data found in table '{table_name}', skipping.")
+                    return
+
+                # Retrieve all doc_id with their chunk count, sorted
+                conn.execute(f"""
+                    SELECT doc_id, COUNT(*) as chunk_count 
+                    FROM postgres_db.{table_name} 
+                    GROUP BY doc_id 
+                    ORDER BY doc_id
+                """)
+                doc_id_counts = conn.fetchall()
+
+                total_doc_ids = len(doc_id_counts)
+                logger.info(
+                    f"Exporting {table_row_count} rows from table '{table_name}' "
+                    f"({total_doc_ids} distinct doc_ids)..."
+                )
+
+                # Reading table_mapping
+                conn.execute(f"""SELECT full_table_name FROM postgres_db.table_mapping
+                                 WHERE table_name = '{table_name}';""")
+                full_table_name = conn.fetchone()[0]
+
+                full_output_folder = os.path.join(parquet_folder, folder_name)
+                os.makedirs(full_output_folder, exist_ok=True)
+
+                file_index = 0
+                current_batch_doc_ids = []
+                current_row_count = 0
+
+                for doc_id, chunk_count in doc_id_counts:
+                    # If adding this doc_id exceeds the limit AND we already have doc_ids
+                    if current_batch_doc_ids and (
+                        current_row_count + chunk_count > rows_per_file
+                    ):
+                        # Export the current batch
+                        _export_batch(
+                            conn=conn,
+                            table_name=table_name,
+                            full_table_name=full_table_name,
+                            doc_ids=current_batch_doc_ids,
+                            file_index=file_index,
+                            output_folder=full_output_folder,
+                            row_count=current_row_count,
+                        )
+                        file_index += 1
+                        current_batch_doc_ids = []
+                        current_row_count = 0
+
+                    # Add this doc_id to the current batch
+                    current_batch_doc_ids.append(doc_id)
+                    current_row_count += chunk_count
+
+                # Export the last batch if there are remaining doc_ids
+                if current_batch_doc_ids:
+                    _export_batch(
+                        conn=conn,
+                        table_name=table_name,
+                        full_table_name=full_table_name,
+                        doc_ids=current_batch_doc_ids,
+                        file_index=file_index,
+                        output_folder=full_output_folder,
+                        row_count=current_row_count,
+                    )
+                    file_index += 1
+
+                # Check the total number of rows exported
+                global_path = os.path.join(
+                    full_output_folder,
+                    full_table_name,
+                    f"{full_table_name}_part_*.parquet",
+                )
+                parquet_row_count = conn.execute(
+                    f"SELECT COUNT(*) FROM read_parquet('{global_path}')"
+                ).fetchone()[0]
+
+                logger.info(
+                    f"Successfully exported table '{table_name}': "
+                    f"{table_row_count} rows -> {parquet_row_count} rows in {file_index} file(s)."
+                )
+
+            except Exception as table_error:
+                logger.error(f"Error processing table '{table_name}': {table_error}")
+                if table_name != "all":
+                    raise
+
+        def _export_batch(
+            conn,
+            table_name: str,
+            full_table_name: str,
+            doc_ids: list,
+            file_index: int,
+            output_folder: str,
+            row_count: int,
+        ):
+            """Exports a batch of doc_ids to a single Parquet file."""
+            try:
+                final_output_folder = os.path.join(output_folder, full_table_name)
+                os.makedirs(final_output_folder, exist_ok=True)
+                output_path = os.path.join(
+                    final_output_folder,
+                    f"{full_table_name}_part_{file_index}.parquet",
+                )
+
+                # Creating WHERE clause
+                doc_ids_escaped = [doc_id.replace("'", "''") for doc_id in doc_ids]
+                doc_ids_str = "', '".join(doc_ids_escaped)
+
+                logger.debug(
+                    f"Exporting part {file_index}: {len(doc_ids)} doc_ids, "
+                    f"~{row_count} rows to {output_path}"
+                )
+
+                has_chunk_index = (
+                    conn.execute(
+                        f"""SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND LOWER(table_name) = LOWER('{table_name}') AND column_name = 'chunk_index'"""
+                    ).fetchone()[0]
+                    > 0
+                )
+
+                if has_chunk_index:
+                    conn.execute(f"""
+                        COPY (
+                            SELECT * FROM postgres_db.{table_name}
+                            WHERE doc_id IN ('{doc_ids_str}')
+                            ORDER BY doc_id, chunk_index
+                        ) TO '{output_path}'
+                        (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
+                    """)
+                else:
+                    conn.execute(f"""
+                    COPY (
+                        SELECT * FROM postgres_db.{table_name}
+                        WHERE doc_id IN ('{doc_ids_str}')
+                        ORDER BY doc_id
+                    ) TO '{output_path}'
+                    (FORMAT PARQUET, COMPRESSION 'ZSTD', PARQUET_VERSION 'V2', ROW_GROUP_SIZE 50000)
+                """)
+
+                logger.debug(
+                    f"Successfully exported batch {file_index} to {output_path}"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Error exporting batch {file_index} for table '{table_name}': {e}"
+                )
+                logger.error(
+                    f"Failed doc_ids: {doc_ids[:5]}..."
+                )  # Log first 5 doc_ids for debugging
+                raise
+
+        os.makedirs(parquet_folder, exist_ok=True)
+
+        if table_name == "all":
+            conn.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='public' AND table_type='BASE TABLE';"
+            )
+            tables = [row[0] for row in conn.fetchall()]
+            logger.info(f"Found {len(tables)} tables to export: {tables}")
+            if "table_mapping" in tables:
+                tables.remove("table_mapping")  # Exclude table_mapping table
+            for table in tables:
+                _export_single_table(table_name=table)
+        elif table_name.startswith("legi_"):
+            _export_single_table(table_name=table_name, folder_name="legi")
+        else:
+            _export_single_table(table_name=table_name)
+
+    except Exception as e:
+        logger.error(f"An error occurred during SQL Table export: {e}")
+        raise
+    finally:
+        if "conn" in locals():
+            conn.close()
 
 
 def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):

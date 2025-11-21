@@ -593,7 +593,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                     .get("c_titre_court")
                     .strip(".")
                 )
-                category = root.find(".//CONTEXTE//TEXTE").get("nature")
+                category = root.find(".//CONTEXTE//TEXTE").get("nature", None)
                 ministry = root.find(".//CONTEXTE//TEXTE").get("ministere", None)
                 subtitles = []
                 for elem in root.find(".//CONTEXTE//TEXTE").iter("TITRE_TM"):

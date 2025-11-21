@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from config import BASE_PATH, config_file_path, data_history_path, get_logger
 from utils import (
+    correct_wrong_column_contents,
     download_file,
     extract_and_remove_tar_file,
     load_config,
@@ -109,6 +110,8 @@ def download_and_optionally_process_files(
 
                     if last_file_index == len(tar_gz_files) - 1:
                         logger.info("No new files to download")
+                        return
+
                     else:
                         for filename in tar_gz_files[
                             last_file_index + 1 :
@@ -153,6 +156,20 @@ def download_and_optionally_process_files(
 
                 except Exception as e:
                     logger.error(f"Error downloading files: {e}")
+                    raise e
+
+                try:
+                    # Correct wrong 'category' column contents in the 'legi' table after processing all files
+                    if process and table_name.lower() == "legi":
+                        correct_wrong_column_contents(
+                            table_name="legi",
+                            column_to_correct="category",
+                            column_helper="title",
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Error correcting 'category' column in 'legi' table: {e}"
+                    )
                     raise e
 
             elif attributes.get("type") == "directory":

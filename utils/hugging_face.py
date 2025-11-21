@@ -37,7 +37,7 @@ class HuggingFace:
         self.token = token if token else HfFolder.get_token()
         self.api = HfApi()
 
-    def is_dataset_up_to_date(self, dataset_name: str, local_folder_path: str) -> bool:
+    def _is_dataset_up_to_date(self, dataset_name: str, local_folder_path: str) -> bool:
         """
         Checks if the remote files on Hugging Face is identical to the local files
         by comparing their SHA256 hashes without downloading the remote files.
@@ -47,7 +47,7 @@ class HuggingFace:
             local_folder_path: Local dataset folder path to compare.
 
         Returns:
-            bool: True if local file hash matches the remote file hash, False otherwise.
+            bool: True if all local file hashes match all the remote file hashes, False otherwise.
         """
         repo_id = f"{self.hugging_face_repo}/{dataset_name}"
         path_in_repo = f"data/{dataset_name}-latest/"
@@ -59,9 +59,13 @@ class HuggingFace:
             )
 
             # List all local parquet files in the specified folder
-            local_files = [
-                f for f in os.listdir(local_folder_path) if f.endswith(".parquet")
-            ]
+            local_files = []
+            for root, dirs, files in os.walk(local_folder_path):
+                for file in files:
+                    if file.endswith(".parquet"):
+                        local_files.append(
+                            os.path.join(root, file).removeprefix(local_folder_path)
+                        )
             local_files.sort()  # Sort to ensure consistent order
 
             if not local_files:
@@ -90,13 +94,11 @@ class HuggingFace:
                     f"Local files count ({len(local_files)}) does not match remote files count ({len(remote_files)}) for dataset '{dataset_name}'. Assuming not up to date."
                 )
                 return False
-
             for k, local_file in enumerate(local_files):
                 remote_file = remote_files[k] if k < len(remote_files) else None
                 remote_file_info = next(
                     (f for f in info.siblings if f.rfilename == remote_file), None
                 )
-
                 if not remote_file.endswith(local_file):
                     logger.warning(
                         f"Local file '{local_file}' does not match remote file '{remote_file}'. Assuming not up to date."
@@ -108,18 +110,20 @@ class HuggingFace:
                     remote_file_info.lfs.get("sha256") if remote_file_info.lfs else None
                 )
                 if not remote_hash:
-                    logger.error(
+                    logger.warning(
                         f"Could not retrieve LFS hash for remote file '{path_in_repo}'."
                     )
                     return False
 
                 # Calculate the SHA256 hash of the local file
-                local_hash = file_sha256(os.path.join(local_folder_path, local_file))
+                local_hash = file_sha256(
+                    os.path.join(local_folder_path, local_file.removeprefix("/"))
+                )
                 logger.debug(
                     f"Comparing local SHA256 ({local_hash}) with remote SHA256 ({remote_hash})"
                 )
                 if local_hash != remote_hash:
-                    logger.warning(
+                    logger.info(
                         f"Local file '{local_file}' is not up to date with remote file '{remote_file}'."
                     )
                     return False
@@ -144,7 +148,7 @@ class HuggingFace:
             )
             return False
 
-    def get_file_upload_date(self, dataset_name: str, hf_file_path: str) -> str:
+    def _get_file_upload_date(self, dataset_name: str, hf_file_path: str) -> str:
         """
         Get the upload date of a file from Hugging Face repository.
 
@@ -202,9 +206,6 @@ class HuggingFace:
                             raise Exception(
                                 f"Last Hugging Face upload date not found in the data history file for the dataset : {dataset_name}"
                             )
-                        raise Exception(
-                            f"Dataset {dataset_name} not found in the data history file."
-                        )
                     except Exception as e:
                         # If the last Hugging Face upload date is not available in the data history file, try to get the last commit date from the Hugging Face repo. BUT MANUAL CHECK WILL BE NEEDED IN HF!
                         logger.info(
@@ -236,49 +237,48 @@ class HuggingFace:
         )
         return None  # If file is not found
 
-    def rename_old_latest_folder(self, dataset_name: str):
+    def _rename_old_latest_folder(self, dataset_name: str):
         """
         Rename the old latest data folder in the Hugging Face dataset repo.
 
         Args:
             repo_id (str): The Hugging Face dataset repo id (e.g., "user/dataset-name").
-            file_name (str): The base name for the file to be renamed.
         """
         repo_id = f"{self.hugging_face_repo}/{dataset_name}"
-        file_prefix = dataset_name.replace("-", "_")
-        representative_file_path = f"data/{dataset_name}-latest/{file_prefix}_part_0.parquet"  # Chosing only the first part to get its upload date
-        old_file_date = self.get_file_upload_date(
-            dataset_name=dataset_name, hf_file_path=representative_file_path
-        )
-
         old_folder_path = f"data/{dataset_name}-latest"
-        new_folder_path = f"data/{dataset_name}-{old_file_date}"
-
-        if old_file_date is None:
-            logger.warning(
-                f"Failed to retrieve the upload date for {representative_file_path}. Cannot rename the old latest file."
-            )
-            return
 
         # List all files in the source directory on HF
         repo_info = self.api.dataset_info(
             repo_id=repo_id, files_metadata=True, token=self.token
         )
-        files_to_copy = [
-            f
-            for f in repo_info.siblings
-            if f.rfilename.startswith(old_folder_path + "/")
+        old_files_to_copy = [
+            f for f in repo_info.siblings if f.rfilename.startswith(old_folder_path)
         ]
 
-        if not files_to_copy:
+        if not old_files_to_copy:
             logger.warning(
                 f"Source folder '{old_folder_path}' is empty or does not exist. Skipping rename."
             )
             return
 
+        first_file = old_files_to_copy[
+            0
+        ].rfilename  # Chosing only a parquet file to get its upload date
+
+        old_file_date = self._get_file_upload_date(
+            dataset_name=dataset_name, hf_file_path=first_file
+        )
+        if old_file_date is None:
+            logger.warning(
+                f"Failed to retrieve the upload date for {first_file}. Cannot rename the old latest file."
+            )
+            return
+
+        new_folder_path = f"data/{dataset_name}-{old_file_date}"
+
         # Build the list of operations: copy each file and delete the folder
         operations = []
-        for file_info in files_to_copy:
+        for file_info in old_files_to_copy:
             # Construct the new path for each file inside the new dated folder
             new_file_path = file_info.rfilename.replace(
                 old_folder_path, new_folder_path, 1
@@ -323,22 +323,17 @@ class HuggingFace:
             raise FileNotFoundError(f"Folder {local_folder_path} does not exist.")
 
         # Get a list of all parquet files in the local folder
-        parquet_files = [
-            f for f in os.listdir(local_folder_path) if f.endswith(".parquet")
-        ]
+
+        parquet_files = []
+        for root, dirs, files in os.walk(local_folder_path):
+            for file in files:
+                if file.endswith(".parquet"):
+                    parquet_files.append(
+                        os.path.join(root, file).removeprefix(local_folder_path + "/")
+                    )
 
         if not parquet_files:
             logger.warning(f"No parquet files found in {local_folder_path}.")
-            return
-
-        # Check if the dataset is already up to date
-        if self.is_dataset_up_to_date(dataset_name, local_folder_path):
-            logger.info(
-                f"The dataset {dataset_name} is already up to date in the Hugging Face repository. No need to upload it again."
-            )
-            # Remove the local parquet file folder
-            logger.debug(f"Removing local files located in {local_folder_path}.")
-            remove_folder(folder_path=local_folder_path)
             return
 
         # Create the repo if it does not exist
@@ -349,10 +344,22 @@ class HuggingFace:
             )
             logger.info(f"Hugging Face repository: {repo_id} successfuly created.")
 
+        # Check if the dataset is already up to date
+        if self._is_dataset_up_to_date(
+            dataset_name=dataset_name, local_folder_path=local_folder_path
+        ):
+            logger.info(
+                f"The dataset {dataset_name} is already up to date in the Hugging Face repository. No need to upload it again."
+            )
+            # Remove the local parquet file folder
+            logger.debug(f"Removing local files located in {local_folder_path}.")
+            remove_folder(folder_path=local_folder_path)
+            return
+
         path_in_repo = f"data/{dataset_name}-latest"
 
         # Uploading all files in the HF repo
-        self.rename_old_latest_folder(dataset_name=dataset_name)
+        self._rename_old_latest_folder(dataset_name=dataset_name)
 
         try:
             for file in parquet_files:
