@@ -699,7 +699,13 @@ def create_table_from_existing(
             logger.debug("PostgreSQL connection closed")
 
 
-def _split_table(source_table: str, target_table: str, data_type: str, value: str):
+def _split_table(
+    source_table: str,
+    target_table: str,
+    data_type: str,
+    value: str,
+    batch_size: int = 50000,
+):
     """
     Split data from source table to target table based on specified criteria.
 
@@ -710,13 +716,16 @@ def _split_table(source_table: str, target_table: str, data_type: str, value: st
         target_table (str): Name of the target table to insert data into
         data_type (str): Type of filter to apply ('category' or 'code')
         value (str): Value to filter by (category name or code title)
+        batch_size (int): Number of rows to process per batch. Default is 50,000.
 
     Returns:
         None: Prints success/error messages to logs
     """
     conn = None
+    cursor = None
+    insert_cursor = None
+
     try:
-        # Connect to PostgreSQL database
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
             port=POSTGRES_PORT,
@@ -724,87 +733,130 @@ def _split_table(source_table: str, target_table: str, data_type: str, value: st
             user=POSTGRES_USER,
             password=POSTGRES_PASSWORD,
         )
-        cursor = conn.cursor()
 
+        # Building WHERE clause based on data_type
         if data_type == "category":
-            select_query = f"""
-                SELECT * FROM {source_table.upper()} 
-                WHERE LOWER(category) = '{value.lower()}'
-            """
-        elif (
-            data_type == "code" and source_table.lower() == "legi"
-        ):  # Specific case for LEGI codes based on full_title
-            select_query = f"""
-                SELECT * FROM {source_table.upper()} 
-                WHERE LOWER(category) = 'code' 
-                AND LOWER(unaccent(full_title)) LIKE LOWER(unaccent('%{value.lower().replace("'", "''")}%'))
-            """
+            where_clause = f"LOWER(category) = '{value.lower()}'"
+        elif data_type == "code" and source_table.lower() == "legi":
+            escaped_value = value.lower().replace("'", "''")
+            where_clause = f"LOWER(category) = 'code' AND LOWER(unaccent(full_title)) LIKE LOWER(unaccent('%{escaped_value}%'))"
         else:
             logger.error(f"Invalid type '{data_type}' specified.")
             return
 
-        # Executing the select query
-        cursor.execute(select_query)
-        rows = cursor.fetchall()
+        # Check first if there is data to copy
+        check_cursor = conn.cursor()
+        check_query = f"""
+            SELECT COUNT(*) FROM {source_table.upper()}
+            WHERE {where_clause}
+        """
+        check_cursor.execute(check_query)
+        row_count = check_cursor.fetchone()[0]
+        check_cursor.close()
 
-        if not rows:
-            logger.error(
-                f"No data found for {data_type} '{value.upper()}' in table '{source_table.upper()}'"
+        if row_count == 0:
+            logger.warning(
+                f"No data found for {data_type} '{value}' in table '{source_table.upper()}'"
             )
             return
 
-        # Retrieving column names
-        columns = [desc[0] for desc in cursor.description]
+        logger.info(f"Found {row_count:,} rows to copy for {data_type} '{value}'")
 
-        # Identify JSONB columns in the target table
-        cursor.execute(f"""
+        # Retrieve column names BEFORE creating the named cursor
+        metadata_cursor = conn.cursor()
+        metadata_cursor.execute(f"""
             SELECT column_name 
             FROM information_schema.columns 
-            WHERE table_name = '{target_table.lower()}' 
+            WHERE table_name = '{source_table.lower()}'
+            ORDER BY ordinal_position
+        """)
+        columns = [row[0] for row in metadata_cursor.fetchall()]
+        metadata_cursor.close()
+
+        escaped_columns = [f'"{col}"' for col in columns]
+
+        # Create a named cursor (server-side cursor)
+        cursor = conn.cursor(name=f"split_cursor_{uuid.uuid4().hex[:8]}")
+        cursor.itersize = batch_size
+
+        # SELECT query with ORDER BY for consistency
+        select_query = f"""
+            SELECT * FROM {source_table.upper()}
+            WHERE {where_clause}
+            ORDER BY chunk_id
+        """
+
+        cursor.execute(select_query)
+
+        # Create a second cursor for INSERT operations
+        insert_cursor = conn.cursor()
+
+        # Retrieve JSONB columns ONCE
+        insert_cursor.execute(f"""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = '{target_table.lower()}'
             AND data_type = 'jsonb';
         """)
-        jsonb_columns = {row[0] for row in cursor.fetchall()}
+        jsonb_columns = {row[0] for row in insert_cursor.fetchall()}
         jsonb_indices = {i for i, col in enumerate(columns) if col in jsonb_columns}
 
-        # Convert JSONB columns (dict/list) to JSON strings
-        converted_rows = []
-        for row in rows:
-            converted_row = list(row)
-            for idx in jsonb_indices:
-                if converted_row[idx] is not None and isinstance(
-                    converted_row[idx], (dict, list)
-                ):
-                    converted_row[idx] = json.dumps(converted_row[idx])
-            converted_rows.append(tuple(converted_row))
-
-        # Construct the INSERT query
-        escaped_columns = [f'"{col}"' for col in columns]
+        # Prepare INSERT query
         placeholders = ", ".join(["%s"] * len(columns))
         update_clause = ", ".join(
-            [f'"{col}"=EXCLUDED."{col}"' for col in columns if col != "chunk_id"]
+            [f'"{col}" = EXCLUDED."{col}"' for col in columns if col != "chunk_id"]
         )
-
         insert_query = f"""
             INSERT INTO {target_table.upper()} ({", ".join(escaped_columns)})
             VALUES ({placeholders})
             ON CONFLICT (chunk_id) DO UPDATE SET {update_clause};
         """
+        processed_rows = 0
+        batch_number = 0
 
-        # Execute the insertion
-        cursor.executemany(insert_query, converted_rows)
+        # Processing batches
+        while True:
+            batch_number += 1
+
+            rows = cursor.fetchmany(batch_size)
+            if not rows:
+                break
+
+            # Convert JSONB columns
+            converted_rows = []
+            for row in rows:
+                converted_row = list(row)
+                for idx in jsonb_indices:
+                    if converted_row[idx] is not None and isinstance(
+                        converted_row[idx], (dict, list)
+                    ):
+                        converted_row[idx] = json.dumps(converted_row[idx])
+                converted_rows.append(tuple(converted_row))
+
+            # Execute the insertion
+            insert_cursor.executemany(insert_query, converted_rows)
+            processed_rows += len(rows)
+
+            if batch_number % 10 == 0:  # Log every 10 batches
+                logger.info(f"Batch {batch_number}: {processed_rows:,} rows processed")
+
         conn.commit()
 
         logger.info(
             f"Data successfully inserted into table '{target_table.upper()}' "
-            f"for {data_type} '{value.upper()}' ({len(converted_rows)} rows)"
+            f"for {data_type} '{value.upper()}' ({processed_rows:,} rows in {batch_number} batches)"
         )
 
     except Exception as e:
-        logger.error(f"Error splitting table data: {e}")
+        logger.error(f"Error splitting table data for {data_type} '{value}': {e}")
         if conn:
             conn.rollback()
         raise e
     finally:
+        if cursor:
+            cursor.close()
+        if insert_cursor:
+            insert_cursor.close()
         if conn:
             conn.close()
             logger.debug("PostgreSQL connection closed")
@@ -842,11 +894,13 @@ def split_legi_table(source_table: str = "legi", export_to_parquet: bool = False
         for item in items:
             if not item:
                 if data_type == "category":
-                    item = "uncategorized"
+                    not_item = "uncategorized"
                 else:
-                    item = "misc"
+                    not_item = "misc"
+                target_table = f"{source_table.lower()}_{format_to_table_name(not_item)}"  # Full table name
+            else:
+                target_table = f"{source_table.lower()}_{format_to_table_name(item)}"  # Full table name
 
-            target_table = f"{source_table.lower()}_{format_to_table_name(item)}"  # Full table name
             truncated_target_table = target_table[:63]  # Truncated for PostgreSQL limit
 
             create_table_from_existing(
@@ -942,6 +996,16 @@ def export_table_to_parquet(
                 current_batch_doc_ids = []
                 current_row_count = 0
 
+                has_chunk_index = (
+                    conn.execute(
+                        f"""SELECT COUNT(*) FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND LOWER(table_name) = LOWER('{table_name}') 
+                        AND column_name = 'chunk_index'"""
+                    ).fetchone()[0]
+                    > 0
+                )
+
                 for doc_id, chunk_count in doc_id_counts:
                     # If adding this doc_id exceeds the limit AND we already have doc_ids
                     if current_batch_doc_ids and (
@@ -956,6 +1020,7 @@ def export_table_to_parquet(
                             file_index=file_index,
                             output_folder=full_output_folder,
                             row_count=current_row_count,
+                            has_chunk_index=has_chunk_index,
                         )
                         file_index += 1
                         current_batch_doc_ids = []
@@ -975,6 +1040,7 @@ def export_table_to_parquet(
                         file_index=file_index,
                         output_folder=full_output_folder,
                         row_count=current_row_count,
+                        has_chunk_index=has_chunk_index,
                     )
                     file_index += 1
 
@@ -1006,8 +1072,21 @@ def export_table_to_parquet(
             file_index: int,
             output_folder: str,
             row_count: int,
+            has_chunk_index: bool,
         ):
-            """Exports a batch of doc_ids to a single Parquet file."""
+            """
+            Exports a batch of doc_ids to a single Parquet file.
+
+            Args:
+                conn: DuckDB connection object.
+                table_name (str): Name of the table to export from.
+                full_table_name (str): Full table name for output folder naming.
+                doc_ids (list): List of doc_ids to include in this batch.
+                file_index (int): Index of the output file.
+                output_folder (str): Base output folder path.
+                row_count (int): Number of rows in this batch.
+                has_chunk_index (bool): Whether the table has a chunk_index column.
+            """
             try:
                 final_output_folder = os.path.join(output_folder, full_table_name)
                 os.makedirs(final_output_folder, exist_ok=True)
@@ -1023,13 +1102,6 @@ def export_table_to_parquet(
                 logger.debug(
                     f"Exporting part {file_index}: {len(doc_ids)} doc_ids, "
                     f"~{row_count} rows to {output_path}"
-                )
-
-                has_chunk_index = (
-                    conn.execute(
-                        f"""SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND LOWER(table_name) = LOWER('{table_name}') AND column_name = 'chunk_index'"""
-                    ).fetchone()[0]
-                    > 0
                 )
 
                 if has_chunk_index:
