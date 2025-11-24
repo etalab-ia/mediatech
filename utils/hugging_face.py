@@ -19,7 +19,7 @@ from config import (
     get_logger,
 )
 
-from . import file_sha256, load_config, load_data_history, remove_file, remove_folder
+from . import file_sha256, load_config, load_data_history, remove_folder
 
 logger = get_logger(__name__)
 
@@ -64,7 +64,9 @@ class HuggingFace:
                 for file in files:
                     if file.endswith(".parquet"):
                         local_files.append(
-                            os.path.join(root, file).removeprefix(local_folder_path)
+                            os.path.join(root, file).removeprefix(
+                                local_folder_path + "/"
+                            )
                         )
             local_files.sort()  # Sort to ensure consistent order
 
@@ -111,14 +113,12 @@ class HuggingFace:
                 )
                 if not remote_hash:
                     logger.warning(
-                        f"Could not retrieve LFS hash for remote file '{path_in_repo}'."
+                        f"Could not retrieve LFS hash for remote file '{remote_file}'."
                     )
                     return False
 
                 # Calculate the SHA256 hash of the local file
-                local_hash = file_sha256(
-                    os.path.join(local_folder_path, local_file.removeprefix("/"))
-                )
+                local_hash = file_sha256(os.path.join(local_folder_path, local_file))
                 logger.debug(
                     f"Comparing local SHA256 ({local_hash}) with remote SHA256 ({remote_hash})"
                 )
@@ -322,19 +322,12 @@ class HuggingFace:
             logger.error(f"Folder {local_folder_path} does not exist.")
             raise FileNotFoundError(f"Folder {local_folder_path} does not exist.")
 
-        # Get a list of all parquet files in the local folder
-
-        parquet_files = []
-        for root, dirs, files in os.walk(local_folder_path):
-            for file in files:
-                if file.endswith(".parquet"):
-                    parquet_files.append(
-                        os.path.join(root, file).removeprefix(local_folder_path + "/")
-                    )
-
-        if not parquet_files:
-            logger.warning(f"No parquet files found in {local_folder_path}.")
-            return
+        # Get a list of all subdirectories in the local folder
+        subdirs = [
+            d
+            for d in os.listdir(local_folder_path)
+            if os.path.isdir(os.path.join(local_folder_path, d))
+        ]
 
         # Create the repo if it does not exist
         repo_id = f"{self.hugging_face_repo}/{dataset_name}"
@@ -361,33 +354,51 @@ class HuggingFace:
         # Uploading all files in the HF repo
         self._rename_old_latest_folder(dataset_name=dataset_name)
 
-        try:
-            for file in parquet_files:
-                self.api.upload_file(
-                    path_or_fileobj=os.path.join(local_folder_path, file),
-                    path_in_repo=f"{path_in_repo}/{file}",
+        if subdirs:
+            for subdir in subdirs:
+                try:
+                    self.api.upload_folder(
+                        folder_path=os.path.join(local_folder_path, subdir),
+                        path_in_repo=f"{path_in_repo}/{subdir}",
+                        repo_id=repo_id,
+                        repo_type="dataset",
+                        token=self.token,
+                        commit_message=f"Updating {dataset_name} dataset, subfolder {subdir}",
+                        allow_patterns=["*.parquet"],
+                    )
+                    logger.info(
+                        f"Folder {subdir} successfuly uploaded to Hugging Face repository: {repo_id}."
+                    )
+                    logger.debug(
+                        f"Removing local folder {os.path.join(local_folder_path, subdir)}."
+                    )
+                    remove_folder(folder_path=os.path.join(local_folder_path, subdir))
+                except Exception as e:
+                    logger.error(
+                        f"Error while uploading folder {subdir} to the Hugging Face repository {repo_id}: {e}"
+                    )
+                    raise e
+        else:
+            try:
+                self.api.upload_folder(
+                    folder_path=local_folder_path,
+                    path_in_repo=path_in_repo,
                     repo_id=repo_id,
                     repo_type="dataset",
                     token=self.token,
-                    commit_message=f"Updating {dataset_name} dataset file",
+                    commit_message=f"Updating {dataset_name} dataset",
+                    allow_patterns=["*.parquet"],
                 )
-                logger.debug(
-                    f"File {file} successfuly uploaded to Hugging Face repository: {repo_id}."
+                logger.info(
+                    f"Folder {local_folder_path} successfuly uploaded to Hugging Face repository: {repo_id}."
                 )
-                logger.debug(
-                    f"Removing local file {os.path.join(local_folder_path, file)}."
+                logger.debug(f"Removing local folder {local_folder_path}.")
+                remove_folder(folder_path=local_folder_path)
+            except Exception as e:
+                logger.error(
+                    f"Error while uploading folder {local_folder_path} to the Hugging Face repository {repo_id}: {e}"
                 )
-                remove_file(file_path=os.path.join(local_folder_path, file))
-
-            # Remove the local parquet files folder after upload
-            logger.debug(f"Removing local files located in {local_folder_path}.")
-            remove_folder(folder_path=local_folder_path)
-
-        except Exception as e:
-            logger.error(
-                f"Error while uploading file {file} to the Hugging Face repository {repo_id}: {e}"
-            )
-            raise e
+                raise e
 
         # Update the data history file with the last Hugging Face upload date
 
