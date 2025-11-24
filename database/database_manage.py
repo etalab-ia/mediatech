@@ -854,9 +854,15 @@ def _split_table(
         raise e
     finally:
         if cursor:
-            cursor.close()
+            try:
+                cursor.close()
+            except Exception:
+                pass
         if insert_cursor:
-            insert_cursor.close()
+            try:
+                insert_cursor.close()
+            except Exception:
+                pass
         if conn:
             conn.close()
             logger.debug("PostgreSQL connection closed")
@@ -891,7 +897,7 @@ def split_legi_table(source_table: str = "legi", export_to_parquet: bool = False
             items (list): List of codes or categories to process.
             data_type (str): Type of data being processed ('code' or 'category').
         """
-        for item in items:
+        for item in sorted(items):
             if not item:
                 if data_type == "category":
                     not_item = "uncategorized"
