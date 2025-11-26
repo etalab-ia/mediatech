@@ -28,5 +28,5 @@ from .data_helpers import (
     remove_file,
     remove_folder,
 )
-from .hugging_face import HuggingFace
+from .hugging_face import HuggingFace, upload_dataset_task
 from .sheets_parser import RagSource

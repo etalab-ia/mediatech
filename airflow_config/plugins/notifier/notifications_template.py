@@ -5,8 +5,7 @@ from airflow.providers.apprise.notifications.apprise import AppriseNotifier
 def get_start_notifier():
     return AppriseNotifier(
         title="🚀𖣘 Airflow - Starting task...",
-        body="""### ℹ️ **Information :**\n
-- **DAG** : {{ dag.dag_id }}\n
+        body="""- **DAG** : {{ dag.dag_id }}\n
 - **Task** : {{ task.task_id }}\n
 - **Description** : {{ dag.description | default("No description") }}\n
 - **Date** : {{ ds }}\n
@@ -23,8 +22,7 @@ def get_start_notifier():
 def get_success_notifier():
     return AppriseNotifier(
         title="✅𖣘 Airflow - Task success",
-        body="""### ℹ️ **Information :**\n
-- **DAG** : {{ dag.dag_id }}\n
+        body="""- **DAG** : {{ dag.dag_id }}\n
 - **Task** : {{ task.task_id }}\n
 """,
         body_format="markdown",
@@ -38,8 +36,7 @@ def get_success_notifier():
 def get_failure_notifier():
     return AppriseNotifier(
         title="❌𖣘 Airflow - Failure",
-        body="""### ℹ️ **Information :**\n
-- **DAG** : {{ dag.dag_id }}\n
+        body="""- **DAG** : {{ dag.dag_id }}\n
 - **Task** : {{ task.task_id }}\n
 ### 🚨 **ERROR :**\n
 ```
