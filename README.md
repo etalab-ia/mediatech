@@ -90,7 +90,7 @@ Airflow will now use this connection to send formatted notifications to your spe
 #### Downloading, Processing and Uploading Data
 
 You are now ready to use Airflow and execute DAGs that are available.
-Each dataset has its own DAG and a [`DAG_Controller`](./airflow_config/dags/dag_controller.py) is defined to manage all datasets DAGs and their execution order.
+Each dataset has its own DAG and the DAG [`FULL_PIPELINE`](./airflow_config/dags/full_pipeline.py) is defined to manage all datasets DAGs and their execution order.
 
 ### </> Method 2 : Use local CLI
 

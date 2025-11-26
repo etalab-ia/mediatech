@@ -8,7 +8,6 @@ from datetime import datetime
 import pandas as pd
 import xxhash
 from openai import PermissionDeniedError
-from tqdm import tqdm
 
 from config import BASE_PATH, SOURCE_MAP, config_file_path, get_logger
 from database import insert_data, refresh_table, remove_data
@@ -66,12 +65,16 @@ def _process_data_gouv_content(
         f"Starting from index: {last_processed_index + 1}"
     )
 
-    for idx, (_, row) in enumerate(
-        tqdm(df.iterrows(), desc=f"Processing {table_name}", total=total_rows)
-    ):
+    for idx, (_, row) in enumerate(df.iterrows()):
         # Skip already processed rows
         if idx <= last_processed_index:
             continue
+
+        # Log progress every 100 rows
+        if idx > 0 and idx % 100 == 0:
+            logger.info(
+                f"Processing row {idx}/{total_rows} ({(idx / total_rows) * 100:.1f}%)"
+            )
 
         # Replace nan values with None in the current row
         row = row.where(pd.notna(row), None)
@@ -233,16 +236,19 @@ def _process_directories_content(
         model (str): Model name for embedding generation
     """
     total_entries = len(directory)
+    logger.info(f"Starting to process {total_entries} entries")
 
     ## Processing data
-    for k, data in tqdm(
-        enumerate(directory),
-        total=total_entries,
-        desc=f"Processing {table_name}",
-    ):
+    for k, data in enumerate(directory):
         # Skip already processed entries
         if k <= last_processed_index:
             continue
+
+        # Log progress every 100 entries
+        if k > 0 and k % 100 == 0:
+            logger.info(
+                f"Processing entry {k}/{total_entries} ({(k / total_entries) * 100:.1f}%)"
+            )
 
         chunk_id = data.get("id", "")
         name = data.get("nom", "")
@@ -1324,13 +1330,14 @@ def process_dila_xml_files(
                 batch_size = 50
                 for i in range(0, len(files), batch_size):
                     batch_files = files[i : i + batch_size]
-
-                    for idx, file in enumerate(
-                        tqdm(
-                            batch_files,
-                            desc=f"Processing batch {i // batch_size + 1}/{(len(files) - 1) // batch_size + 1} of {os.path.basename(source_path)}",
+                    batch_num = i // batch_size + 1
+                    total_batches = (len(files) - 1) // batch_size + 1
+                    if batch_num % 10 == 0 or batch_num == total_batches:
+                        logger.info(
+                            f"Processing batch {batch_num}/{total_batches} of {os.path.basename(source_path)} ({len(batch_files)} files)"
                         )
-                    ):
+
+                    for idx, file in enumerate(batch_files):
                         file_global_index = i + idx
 
                         # Skip already processed files

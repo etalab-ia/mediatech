@@ -89,7 +89,7 @@ Airflow utilisera désormais cette connexion pour envoyer des notifications form
 #### Téléchargement, Traitement et Téléversement des Données
 
 Vous êtes maintenant prêt à utiliser Airflow et à exécuter les DAGs disponibles.
-Chaque jeu de données a son propre DAG et un [`DAG_Controller`](./airflow_config/dags/dag_controller.py) est défini pour gérer tous les DAGs de jeux de données et leur ordre d'exécution.
+Chaque jeu de données a son propre DAG et le DAG [`FULL_PIPELINE`](./airflow_config/dags/full_pipeline.py) est défini pour gérer tous les DAGs de jeux de données et leur ordre d'exécution.
 
 ### </> Méthode 2 : Utiliser le CLI en local
 

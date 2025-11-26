@@ -1,7 +1,7 @@
 # Change the value to your correct project path
 PROJECT_DIR=your/repo/path
 
-# Executing periodic update
+# Executing the periodic update script
 # For example : Every Friday at 7 pm
 0 19 * * 5 $PROJECT_DIR/scripts/periodic_update.sh
 

@@ -191,7 +191,7 @@ def main():
 
         # Upload dataset to Hugging Face
         elif args["upload_dataset"]:
-            from utils import HuggingFace
+            from utils.hugging_face import HuggingFace, upload_dataset_task
 
             if args["--all"]:
                 logger.info("Uploading all datasets to Hugging Face")
@@ -223,11 +223,12 @@ def main():
                 logger.info(
                     f"Uploading dataset {dataset_name} from {input_path} to Hugging Face (private={private})"
                 )
-                hf = HuggingFace(hugging_face_repo=repository, token=HF_TOKEN)
-                hf.upload_dataset(
+                upload_dataset_task(
                     dataset_name=dataset_name,
-                    local_folder_path=input_path,
+                    token=HF_TOKEN,
+                    repository=repository,
                     private=private,
+                    local_folder_path=input_path,
                 )
 
         return 0

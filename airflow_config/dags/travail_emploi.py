@@ -1,13 +1,17 @@
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.operators.bash import BashOperator
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.operators.python import PythonOperator
 from notifier.notifications_template import (
     get_failure_notifier,
     get_start_notifier,
     get_success_notifier,
 )
+
+from config import HF_TOKEN
+from database import create_all_tables, export_table_to_parquet
+from download_and_processing import download_and_optionally_process_files
+from utils.hugging_face import upload_dataset_task
 
 default_args = {
     "owner": "airflow",
@@ -24,53 +28,56 @@ with DAG(
     max_active_runs=1,
     description="TRAVAIL-EMPLOI.GOUV.FR data processing pipeline",
     tags=["mediatech", "travail_emploi"],
+    params={
+        "table_name": "travail_emploi",
+        "model": "BAAI/bge-m3",
+        "private": False,
+        "repository": "AgentPublic",
+    },
 ) as dag:
-    wait_for_service_public = ExternalTaskSensor(
-        task_id="wait_for_service_public",
-        external_dag_id="SERVICE_PUBLIC",
-        external_task_id="upload_dataset",
-        allowed_states=["success"],
-        mode="reschedule",  # Reschedule mode to avoid blocking the scheduler
-        timeout=7 * 24 * 60 * 60,  # Wait up to 7 days, after which the task will fail
-        poke_interval=120,  # Check every 2 minutes if the task has completed
-    )
-
-    create_tables = BashOperator(
+    create_tables = PythonOperator(
         task_id="create_tables",
-        bash_command="mediatech create_tables --model BAAI/bge-m3",
+        python_callable=create_all_tables,
+        op_kwargs={"delete_existing": False, "model": "{{ params.model }}"},
         on_execute_callback=get_start_notifier(),
         on_success_callback=get_success_notifier(),
         on_failure_callback=get_failure_notifier(),
     )
 
-    download_and_process_files = BashOperator(
+    download_and_process_files = PythonOperator(
         task_id="download_and_process_files",
-        bash_command="mediatech download_and_process_files --source travail_emploi --model BAAI/bge-m3",
+        python_callable=download_and_optionally_process_files,
+        op_kwargs={
+            "table_name": "{{ params.table_name }}",
+            "process": True,
+            "model": "{{ params.model }}",
+        },
         on_execute_callback=get_start_notifier(),
         on_success_callback=get_success_notifier(),
         on_failure_callback=get_failure_notifier(),
     )
 
-    export_table = BashOperator(
+    export_table = PythonOperator(
         task_id="export_table",
-        bash_command="mediatech export_table --table travail_emploi",
+        python_callable=export_table_to_parquet,
+        op_kwargs={"table_name": "{{ params.table_name }}"},
         on_execute_callback=get_start_notifier(),
         on_success_callback=get_success_notifier(),
         on_failure_callback=get_failure_notifier(),
     )
 
-    upload_dataset = BashOperator(
+    upload_dataset = PythonOperator(
         task_id="upload_dataset",
-        bash_command="mediatech upload_dataset --dataset-name travail-emploi",
+        python_callable=upload_dataset_task,
+        op_kwargs={
+            "dataset_name": "travail-emploi",
+            "token": HF_TOKEN,
+            "repository": "{{ params.repository }}",
+            "private": "{{ params.private }}",
+        },
         on_execute_callback=get_start_notifier(),
         on_success_callback=get_success_notifier(),
         on_failure_callback=get_failure_notifier(),
     )
 
-    (
-        wait_for_service_public
-        >> create_tables
-        >> download_and_process_files
-        >> export_table
-        >> upload_dataset
-    )
+    create_tables >> download_and_process_files >> export_table >> upload_dataset

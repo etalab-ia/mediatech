@@ -17,11 +17,41 @@ from config import (
     config_file_path,
     data_history_path,
     get_logger,
+    parquet_files_folder,
 )
 
 from . import file_sha256, load_config, load_data_history, remove_folder
 
 logger = get_logger(__name__)
+
+
+def upload_dataset_task(
+    dataset_name: str,
+    token: str,
+    repository: str = "AgentPublic",
+    private: bool = False,
+    local_folder_path: str = None,
+    **context,
+):
+    """
+    Upload dataset to Hugging Face.
+
+    Args:
+        dataset_name (str): Name of the dataset to upload.
+        token (str): Hugging Face API token.
+        repository (str): Hugging Face repository name. Default is "AgentPublic".
+        private (bool): Whether the repository is private. Default is False.
+        local_folder_path (str, optional): Local folder path containing the dataset files.
+    """
+    local_folder_path = local_folder_path or os.path.join(
+        parquet_files_folder, f"{dataset_name.lower().replace('-', '_')}"
+    )
+    hf = HuggingFace(hugging_face_repo=repository, token=token)
+    hf.upload_dataset(
+        dataset_name=dataset_name,
+        local_folder_path=local_folder_path,
+        private=private,
+    )
 
 
 class HuggingFace:
