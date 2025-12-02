@@ -165,7 +165,7 @@ log "INFO" "Starting database restore process..."
 
 # Decompress backup file
 log "DEBUG" "Decompressing backup file..."
-TEMP_DUMP="/tmp/restore_$(basename "$BACKUP_FILE" .gz)"
+TEMP_DUMP="./tmp/restore_$(basename "$BACKUP_FILE" .gz)"
 
 if gunzip -c "$BACKUP_FILE" > "$TEMP_DUMP"; then
     log "INFO" "Backup file decompressed successfully"
