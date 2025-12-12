@@ -1,7 +1,6 @@
 import hashlib
 import json
 import os
-import re
 import shutil
 import tarfile
 from datetime import datetime
@@ -513,21 +512,6 @@ def doc_to_chunk(doc: dict) -> str | None:
         chunk_text = "\n".join([doc["title"] + context, doc["text"]])
 
     return chunk_text
-
-
-def _add_space_after_punctuation(text: str):
-    return re.sub(r"([.,;:!?])([^\s\d])", r"\1 \2", text)
-
-
-def load_experiences(storage_dir: str):
-    with open(os.path.join(storage_dir, "export-expa-c-riences.json")) as f:
-        documents = json.load(f)
-
-    for d in documents:
-        descr = d["description"]
-        d["description"] = _add_space_after_punctuation(descr)
-
-    return documents
 
 
 def load_sheets(storage_dir: str, sources: str | list[str]):

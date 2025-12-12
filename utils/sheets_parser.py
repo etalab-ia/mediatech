@@ -64,8 +64,9 @@ def extract_all(soup: Tag, tag: str, pop=True) -> list[str]:
 # ***************
 
 
-def _get_xml_files(path) -> list[str]:
-    """Return sorted list of XML file paths.
+def _get_xml_files_paths(path: str) -> list[str]:
+    """
+    Returns sorted list of XML files paths.
 
     If `path` is a file returns [path]. If a directory, walk it and include files
     that end with '.xml' and start with 'N' or 'F'.
@@ -161,16 +162,41 @@ def _parse_xml_text_structured(
     current: list[str], context: list[str], soups: list[Tag], recurse=True, depth=0
 ) -> list[dict]:
     """
-    Separate text on Situation and Chapitre.
-    Keep the contexts (the history of titles) while iterating.
+    Recursively parse a Service Public XML document into structured chunks.
+
+    Splits XML content into distinct sections while preserving the hierarchical
+    context (list of parent titles). Creates a new chunk whenever it
+    encounters a <Situation>, <Chapitre>, or <SousChapitre> element.
 
     Args:
-        current: the current text of the cursor, that will be joined to a string
-        context: the current history of title (Titre)
-        soups: the tree cursor
-        recurse: continue to split chunks
+        current: Accumulated text fragments for the chunk being built.
+        context: List of parent titles (e.g., ["Enfant majeur", "Vit chez vous"]).
+        soups: XML nodes to traverse.
+        recurse: If True, continue creating sub-chunks for nested sections.
+        depth: Current recursion depth (0 = root level).
 
-    Returns: a list of {text, context}
+    Returns:
+        List of dictionaries, each containing:
+            - "text": Chunk content (str if depth=0, list[str] otherwise)
+            - "context": List of parent titles for this chunk
+
+    Element Handling:
+        - <Situation>, <Chapitre>: Create new chunk, add title to context, recurse
+        - <SousChapitre>: Create new chunk but stop further recursion
+        - <BlocCas>: Format as "Case {title}: {content}"
+        - <Liste>: Format as "- {item}"
+        - <Tableau>: Convert to Markdown table
+        - <ANoter>, <ASavoir>, <Attention>, <Rappel>: Format as "(Title: content)"
+
+    Example:
+        Input XML:
+            <Situation>
+                <Titre>Enfant mineur</Titre>
+                <Texte>Vous pouvez déduire...</Texte>
+            </Situation>
+
+        Output:
+            [{"text": "Vous pouvez déduire...", "context": ["Enfant mineur"]}]
     """
     # TODO:
     #  - could probably be optimized by not extracting tag, just reading it; see extract()
@@ -322,15 +348,43 @@ def _parse_xml_text_structured(
     return state
 
 
-def _parse_xml_text(xml_file: str, structured: bool = False) -> dict:
-    """Parse a service-public XML file and return a normalized dict.
-
-    If structured=True preserves sections; otherwise returns flattened text.
+def _parse_xml_text(xml_file_path: str, structured: bool = False) -> dict:
     """
-    with open(xml_file, mode="r", encoding="utf-8") as f:
+    Parse a service-public XML file and return a normalized dictionary containing document metadata and content.
+
+    Args:
+        xml_file_path (str): Path to the XML file to parse.
+        structured (bool, optional): If True, preserves document sections and structure.
+            If False, returns flattened text content. Defaults to False.
+
+    Returns:
+        dict: A dictionary containing:
+            - Metadata fields (url, sid, source, introduction, etc.) via _get_metadata
+            - sid (str): Service identifier extracted from URL
+            - source (str): Always set to "service-public"
+            - related_questions (list[dict]): List of related Q&A with keys:
+                - question (str): Question text
+                - sid (str): Question identifier
+                - url (str): Full URL to the question
+            - web_services (list[dict]): List of online services with keys:
+                - title (str): Service title
+                - institution (str): Institution providing the service
+                - url (str): Service URL
+                - type (str): Service type
+            - text (list[dict] | list[str]): Document content. Format depends on `structured`:
+                - If structured=True: List of dicts with structured sections
+                - If structured=False: List containing single flattened text string
+
+    Notes:
+        - Removes noise elements
+        - Normalizes all text content
+        - Deduplicates related questions and web services by title/question text
+        - When structured=True and sections exist, appends section list to introduction
+    """
+    with open(xml_file_path, mode="r", encoding="utf-8") as f:
         soup = BeautifulSoup(f, "xml")
 
-    doc = _get_metadata(soup)
+    doc = _get_metadata(soup=soup)  # Initialize doc with metadata
     doc["sid"] = doc["url"].split("/")[-1]
     doc["source"] = "service-public"
 
@@ -422,7 +476,9 @@ def _parse_xml_text(xml_file: str, structured: bool = False) -> dict:
             for obj in x.children:
                 if obj.name in ("Texte", "ListeSituations"):
                     top_list.append(obj)
-        texts = _parse_xml_text_structured(current, context, top_list)
+        texts = _parse_xml_text_structured(
+            current=current, context=context, soups=top_list
+        )
 
         if texts and sections:
             # Add all sections title at the end of the introduction
@@ -466,8 +522,24 @@ def _parse_xml_text(xml_file: str, structured: bool = False) -> dict:
     return doc
 
 
-def _parse_xml_questions(xml_file: str) -> list[dict]:
-    with open(xml_file, mode="r", encoding="utf-8") as f:
+def _parse_xml_questions(xml_file_path: str) -> list[dict]:
+    """
+    Parse XML file containing questions and their metadata from Service Public.
+
+    This function extracts question data from an XML file containing either
+    QuestionReponse or CommentFaireSi tags and returns a structured list of
+    question dictionaries.
+
+    Args:
+        xml_file_path (str): Path to the XML file to parse.
+
+    Returns:
+        list[dict]: A list of dictionaries, each containing:
+            - question (str): The question text or formatted question
+            - url (str): The Service Public URL for the question
+            - tag (str): The XML tag type ("QuestionReponse" or "CommentFaireSi")
+    """
+    with open(xml_file_path, mode="r", encoding="utf-8") as f:
         soup = BeautifulSoup(f, "xml")
 
     docs = []
@@ -491,35 +563,78 @@ def _parse_xml_questions(xml_file: str) -> list[dict]:
 def _parse_xml(
     target_dir: str, parse_type: str, structured: bool = False
 ) -> list[dict]:
+    """
+    Parse XML files from a target directory and extract content based on the specified type.
+
+    Args:
+        target_dir (str): Path to the directory containing XML files to parse.
+        parse_type (str): Type of parsing to perform. Must be either "text" or "questions".
+            - "text": Parse XML files as text documents
+            - "questions": Parse XML files as question documents
+        structured (bool, optional): If True, parse text in a structured format.
+            Only applicable when parse_type is "text". Defaults to False.
+
+    Returns:
+        list[dict]: A list of dictionaries containing the parsed content from the XML files.
+            - When parse_type is "text": Each dict represents a single document
+            - When parse_type is "questions": Each dict represents a single question
+
+    Raises:
+        ValueError: If parse_type is not "text" or "questions".
+        FileNotFoundError: If the target_dir does not exist.
+    """
     if parse_type not in ("text", "questions"):
         raise ValueError()
 
     if not os.path.exists(target_dir):
         raise FileNotFoundError(f"path {target_dir} to xml sheets not found.")
 
-    xml_files = _get_xml_files(target_dir)
+    xml_files_paths = _get_xml_files_paths(path=target_dir)
 
     docs = []
     current_pct = 0
-    n = len(xml_files)
-    for i, xml_file in enumerate(xml_files):
+    n = len(xml_files_paths)
+    for i, xml_file_path in enumerate(xml_files_paths):
         pct = (100 * i) // n
         if pct > current_pct:
             current_pct = pct
             logger.debug(f"Processing sheet: {current_pct}%\r", end="")
 
         if parse_type == "text":
-            doc = _parse_xml_text(xml_file, structured=structured)  # returns dict
+            doc = _parse_xml_text(
+                xml_file_path=xml_file_path, structured=structured
+            )  # returns dict
             if doc:
                 docs.append(doc)
         elif parse_type == "questions":
-            _docs = _parse_xml_questions(xml_file)
+            _docs = _parse_xml_questions(xml_file_path=xml_file_path)
             docs.extend(_docs)
 
     return docs  # list of dicts
 
 
 def _parse_travailEmploi(target_dir: str, structured: bool = False) -> list[dict]:
+    """
+    Parse Travail-Emploi data from a JSON file into a structured format.
+
+    Args:
+        target_dir (str): Path to the JSON file containing Travail-Emploi data.
+        structured (bool, optional): If True, returns text sections as a list of dictionaries
+            with normalized text and context (title). If False, joins all sections into a
+            single normalized string. Defaults to False.
+
+    Returns:
+        list[dict]: A list of dictionaries where each dictionary represents a document with
+            the following keys:
+            - title (str): Normalized title of the document
+            - url (str): URL of the document
+            - date (str): Publication date
+            - sid (str): Publication ID
+            - introduction (str): Extracted text from the HTML intro
+            - text (list): Parsed sections (format depends on 'structured' parameter)
+            - surtitle (str): Always set to "Travail-Emploi"
+            - source (str): Always set to "travail-emploi"
+    """
     with open(os.path.join(target_dir)) as f:
         data = json.load(f)
 
@@ -578,7 +693,41 @@ class RagSource:
         return source in cls.__dict__.values()
 
     @classmethod
-    def get_sheets(cls, storage_dir: str | None, structured: bool = False):
+    def get_sheets(
+        cls, storage_dir: str | None, structured: bool = False
+    ) -> list[dict]:
+        """
+        Retrieve and parse sheet data from a specified storage directory.
+
+        This class method reads and parses sheet files from different data sources based on the
+        storage directory path. It supports multiple data sources including Service Public
+        (particulier and pro) and Travail Emploi.
+
+        Args:
+            storage_dir (str | None): The base path where files are stored and will be read from.
+                Must be a valid directory path corresponding to one of the supported data sources.
+            structured (bool, optional): Whether to parse the sheets in a structured format.
+                Defaults to False.
+
+        Returns:
+            list: A list of dictionaries containing parsed sheet data. Each sheet dictionary
+                includes at minimum a 'sid' (sheet ID) field. Duplicates based on 'sid' are
+                automatically removed.
+
+        Raises:
+            ValueError: If storage_dir is None or empty.
+            FileNotFoundError: If the expected directory structure for Travail Emploi data
+                cannot be found.
+            NotImplementedError: If the storage_dir does not match any known data source.
+
+        Notes:
+            - For Service Public data sources, files are read from a subdirectory matching
+            the basename of storage_dir.
+            - For Travail Emploi data, the method searches for a directory starting with
+            the basename of storage_dir.
+            - Duplicate sheets (identified by 'sid') are automatically removed, with logging
+            of the duplicates found.
+        """
         if not storage_dir:
             raise ValueError("You must give a storage directory.")
 
@@ -589,7 +738,11 @@ class RagSource:
             # storage_dir: the base path where files are gonna be written.
             # target_dir: read-only base path where sheets are read.
             target_dir = f"{storage_dir}/{storage_dir.split('/')[-1]}"
-            sheets.extend(_parse_xml(target_dir, "text", structured=structured))
+            sheets.extend(
+                _parse_xml(
+                    target_dir=target_dir, parse_type="text", structured=structured
+                )
+            )
         elif TRAVAIL_EMPLOI_DATA_FOLDER.endswith(storage_dir):
             base_name = os.path.basename(storage_dir)
             target_dir = next(

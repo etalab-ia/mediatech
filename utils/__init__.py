@@ -6,8 +6,8 @@ from .chunking_and_embedding import (
     generate_embeddings,
     generate_embeddings_with_retry,
     make_chunks,
-    make_chunks_directories,
     make_chunks_sheets,
+    make_directory_text,
 )
 from .data_helpers import (
     _extract_distinct_data,
@@ -23,7 +23,6 @@ from .data_helpers import (
     format_to_table_name,
     load_config,
     load_data_history,
-    load_experiences,
     load_sheets,
     remove_file,
     remove_folder,

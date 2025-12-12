@@ -21,8 +21,8 @@ from utils import (
     generate_embeddings_with_retry,
     load_config,
     make_chunks,
-    make_chunks_directories,
     make_chunks_sheets,
+    make_directory_text,
     remove_file,
     remove_folder,
 )
@@ -80,7 +80,7 @@ def _process_data_gouv_content(
         row = row.where(pd.notna(row), None)
         # Making chunks
         chunk_text = make_chunks(
-            text=row["chunk_text"], chunk_size=1000, chunk_overlap=100
+            text=row["chunk_text"], chunk_size=1000, chunk_overlap=0
         )[
             0
         ]  # Only keep the first chunks because a too long description is not interesting for this kind of dataset
@@ -405,7 +405,7 @@ def _process_directories_content(
 
         hierarchy = data.get("hierarchie", [])
 
-        chunk_text = make_chunks_directories(
+        chunk_text = make_directory_text(
             nom=name,
             mission=mission_description,
             responsables=people_in_charge,

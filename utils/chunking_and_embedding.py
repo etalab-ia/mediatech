@@ -186,14 +186,12 @@ def generate_embeddings_with_retry(
             time.sleep(time_sleep)  # Waiting {time_sleep} seconds before retrying
 
 
-def make_chunks(
-    text: str, chunk_size: int = 1500, chunk_overlap: int = 200
-) -> list[str]:
+def make_chunks(text: str, chunk_size: int = 1500, chunk_overlap: int = 0) -> list[str]:
     """
     Splits the input text into overlapping chunks using a recursive character-based text splitter.
     Args:
         text (str): The input text to be split into chunks.
-        chunk_size (int, optional): The maximum size of each chunk. Defaults to 512.
+        chunk_size (int, optional): The maximum size of each chunk.
         chunk_overlap (int, optional): The number of overlapping characters between consecutive chunks.
     Returns:
         List[str]: A list of text chunks generated from the input text.
@@ -210,7 +208,7 @@ def make_chunks(
     return chunks
 
 
-def make_chunks_directories(
+def make_directory_text(
     nom: str,
     mission: Optional[str],
     responsables: Optional[list],
@@ -280,7 +278,7 @@ def make_chunks_directories(
 
 
 def make_chunks_sheets(
-    storage_dir: str, structured=True, chunk_size=1500, chunk_overlap=200
+    storage_dir: str, structured=True, chunk_size=1500, chunk_overlap=0
 ) -> None:
     """Chunkify sheets and save to a JSON file"""
 
