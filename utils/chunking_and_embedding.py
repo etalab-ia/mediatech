@@ -186,13 +186,16 @@ def generate_embeddings_with_retry(
             time.sleep(time_sleep)  # Waiting {time_sleep} seconds before retrying
 
 
-def make_chunks(text: str, chunk_size: int = 1500, chunk_overlap: int = 0) -> list[str]:
+def make_chunks(
+    text: str, chunk_size: int = 1500, chunk_overlap: int = 0, length_function=len
+) -> list[str]:
     """
     Splits the input text into overlapping chunks using a recursive character-based text splitter.
     Args:
         text (str): The input text to be split into chunks.
         chunk_size (int, optional): The maximum size of each chunk.
         chunk_overlap (int, optional): The number of overlapping characters between consecutive chunks.
+        length_function (callable, optional): Function to calculate the length of text.
     Returns:
         List[str]: A list of text chunks generated from the input text.
     """
@@ -203,6 +206,7 @@ def make_chunks(text: str, chunk_size: int = 1500, chunk_overlap: int = 0) -> li
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         separators=["\n\n", "\n", " ", ""],
+        length_function=length_function,
     )
     chunks = text_splitter.split_text(text)
     return chunks

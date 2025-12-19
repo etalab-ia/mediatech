@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 
 
-def setup_logging(debug=False):
+def setup_logging(debug=False, log_filename="update"):
     # Ensure logs directory exists
     os.makedirs("logs", exist_ok=True)
 
@@ -14,7 +14,7 @@ def setup_logging(debug=False):
 
     # Configure root logger
     logging.basicConfig(
-        filename=f"logs/update_{date}.log",
+        filename=f"logs/{log_filename}_{date}.log",
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     )
