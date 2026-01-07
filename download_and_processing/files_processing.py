@@ -80,7 +80,10 @@ def _process_data_gouv_content(
         row = row.where(pd.notna(row), None)
         # Making chunks
         chunk_text = make_chunks(
-            text=row["chunk_text"], chunk_size=1000, chunk_overlap=0
+            text=row["chunk_text"],
+            chunk_size=1000,
+            chunk_overlap=0,
+            length_function="len",
         )[
             0
         ]  # Only keep the first chunks because a too long description is not interesting for this kind of dataset
@@ -662,8 +665,9 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
 
                 chunks = make_chunks(
                     text=text_content,
-                    chunk_size=5000,
-                    chunk_overlap=250,
+                    chunk_size=1024,
+                    chunk_overlap=0,
+                    length_function="bge_m3_tokenizer",
                 )
                 data_to_insert = []
 
@@ -764,6 +768,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                     text=text_content,
                     chunk_size=1500,
                     chunk_overlap=200,
+                    length_function="len",
                 )
                 data_to_insert = []
 
@@ -843,7 +848,12 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                 text_content.append(content)
             text_content = "\n".join(text_content)
 
-            chunks = make_chunks(text=text_content, chunk_size=1500, chunk_overlap=200)
+            chunks = make_chunks(
+                text=text_content,
+                chunk_size=1500,
+                chunk_overlap=200,
+                length_function="len",
+            )
             data_to_insert = []
 
             for k, text in enumerate(chunks):
@@ -919,7 +929,9 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                 articles_synthesis_dict = []
 
             # Creating chunks for explanatory memorandum
-            chunks = make_chunks(text=exp_memo, chunk_size=8000, chunk_overlap=400)
+            chunks = make_chunks(
+                text=exp_memo, chunk_size=8000, chunk_overlap=400, length_function="len"
+            )
             data_to_insert = []
             if not chunks:
                 chunk_text = title
@@ -1134,6 +1146,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                         text=chunk_text,
                         chunk_size=8000,
                         chunk_overlap=400,
+                        length_function="len",
                     )
 
                     for k, text in enumerate(chunks):
@@ -1197,7 +1210,10 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                     chunks = "\n".join(chunks).strip()
 
                     chunks = make_chunks(
-                        text=chunks, chunk_size=8000, chunk_overlap=400
+                        text=chunks,
+                        chunk_size=8000,
+                        chunk_overlap=400,
+                        length_function="len",
                     )
 
                     for i, text in enumerate(chunks):
@@ -1646,6 +1662,7 @@ def process_sheets(
             structured=True,
             chunk_size=1500,
             chunk_overlap=200,
+            length_function="len",
         )
         json_path = os.path.join(target_dir, "sheets_as_chunks.json")
         checkpoint = CheckpointManager(source_path=json_path)

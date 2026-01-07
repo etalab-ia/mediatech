@@ -11,6 +11,7 @@ import xxhash
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from openai import OpenAI, PermissionDeniedError
 from tqdm import tqdm
+from transformers import AutoTokenizer
 
 from config import (
     API_KEY,
@@ -25,6 +26,8 @@ from .data_helpers import doc_to_chunk
 from .sheets_parser import RagSource
 
 logger = get_logger(__name__)
+
+_bge_tokenizer = None  # Global tokenizer instance for BGE-M3 model
 
 
 class CorpusHandler(ABC):
@@ -186,8 +189,31 @@ def generate_embeddings_with_retry(
             time.sleep(time_sleep)  # Waiting {time_sleep} seconds before retrying
 
 
+def _get_length_function(length_function: str):
+    """
+    Returns the appropriate length function based on the provided string identifier.
+
+    Args:
+        length_function (str): The identifier for the desired length function.
+    """
+    global _bge_tokenizer
+
+    if length_function == "len":
+        return len
+    elif length_function == "bge_m3_tokenizer":
+        if _bge_tokenizer is None:
+            _bge_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
+        return lambda text: len(_bge_tokenizer.encode(text))
+    else:
+        logger.error(f"Unknown length_function: {length_function}")
+        raise ValueError(f"Unknown length_function: {length_function}")
+
+
 def make_chunks(
-    text: str, chunk_size: int = 1500, chunk_overlap: int = 0, length_function=len
+    text: str,
+    chunk_size: int = 1500,
+    chunk_overlap: int = 0,
+    length_function="bge_m3_tokenizer",
 ) -> list[str]:
     """
     Splits the input text into overlapping chunks using a recursive character-based text splitter.
@@ -202,11 +228,14 @@ def make_chunks(
     if not text:
         logger.debug("Empty text provided for chunking.")
         return []
+
+    length_fn = _get_length_function(length_function)
+
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         separators=["\n\n", "\n", " ", ""],
-        length_function=length_function,
+        length_function=length_fn,
     )
     chunks = text_splitter.split_text(text)
     return chunks
@@ -282,12 +311,22 @@ def make_directory_text(
 
 
 def make_chunks_sheets(
-    storage_dir: str, structured=True, chunk_size=1500, chunk_overlap=0
+    storage_dir: str,
+    structured=True,
+    chunk_size=1500,
+    chunk_overlap=0,
+    length_function="bge_m3_tokenizer",
 ) -> None:
-    """Chunkify sheets and save to a JSON file"""
+    """
+    Chunkify sheets and save chunks to a JSON file.
 
-    if structured:
-        chunk_overlap = 20
+    Args:
+        storage_dir (str): Directory where the sheets are stored.
+        structured (bool, optional): Whether the sheets are structured. Defaults to True.
+        chunk_size (int, optional): Size of each chunk. Defaults to 1500.
+        chunk_overlap (int, optional): Overlap between chunks. Defaults to 0.
+        length_function (str or callable, optional): Function to calculate the length of text. Defaults to "bge_m3_tokenizer".
+    """
 
     if storage_dir is None:
         raise ValueError(
@@ -298,11 +337,13 @@ def make_chunks_sheets(
         storage_dir=storage_dir, structured=structured
     )  # list of dicts built from XML files
 
+    length_fn = _get_length_function(length_function)
+
     chunks = []
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        length_function=len,
+        length_function=length_fn,
         is_separator_regex=False,
     )
     hashes = []
