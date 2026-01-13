@@ -313,7 +313,7 @@ def make_directory_text(
 def make_chunks_sheets(
     storage_dir: str,
     structured=True,
-    chunk_size=1500,
+    chunk_size=1024,
     chunk_overlap=0,
     length_function="bge_m3_tokenizer",
 ) -> None:
@@ -343,8 +343,8 @@ def make_chunks_sheets(
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", " ", ""],
         length_function=length_fn,
-        is_separator_regex=False,
     )
     hashes = []
     info = defaultdict(lambda: defaultdict(list))
