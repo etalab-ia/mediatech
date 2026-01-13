@@ -1660,9 +1660,9 @@ def process_sheets(
         make_chunks_sheets(
             storage_dir=target_dir,
             structured=True,
-            chunk_size=1500,
-            chunk_overlap=200,
-            length_function="len",
+            chunk_size=1024,
+            chunk_overlap=0,
+            length_function="bge_m3_tokenizer",
         )
         json_path = os.path.join(target_dir, "sheets_as_chunks.json")
         checkpoint = CheckpointManager(source_path=json_path)
