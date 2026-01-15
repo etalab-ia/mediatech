@@ -36,19 +36,20 @@ It includes scripts for downloading, processing, embedding, and inserting this d
    sudo chmod +x ./scripts/containers_deployment.sh
    ./scripts/containers_deployment.sh
    ```
+2. Set up the environment variables in a [`.env`](.env) file based on the example in [`.env.example`](.env.example).
 
-2. Export [`.env`](.env) variables :
+3. Export [`.env`](.env) variables :
    ```bash
    export $(grep -v '^#' .env | xargs)
    ```
 
-3. Make sure to remove the PostgreSQL (PgVector) volume:
+4. Make sure to remove the PostgreSQL (PgVector) volume:
    ```bash
    docker compose down -v
    ```
    > ⚠️ This operation will delete all volumes ! 
 
-4. Use the Airflow API to obtain the `JWT_TOKEN` variable:
+5. Use the Airflow API to obtain the `JWT_TOKEN` variable:
    ```bash
    curl -X 'POST' \
    'http://localhost:8080/auth/token' \
@@ -56,7 +57,7 @@ It includes scripts for downloading, processing, embedding, and inserting this d
    -d "{\"username\": \"${_AIRFLOW_WWW_USER_USERNAME}\", \"password\": \"${_AIRFLOW_WWW_USER_PASSWORD}\"}"
    ```
 
-5. Define the `JWT_TOKEN` variable in the [`.env`](.env) file with the obtained `access_token`.
+6. Define the `JWT_TOKEN` variable in the [`.env`](.env) file with the obtained `access_token`.
 
 #### Optional : Configure Tchap logging 
 
@@ -121,12 +122,17 @@ Each dataset has its own DAG and the DAG [`FULL_PIPELINE`](./airflow_config/dags
 
 1. Set up the environment variables in a [`.env`](.env) file based on the example in [`.env.example`](.env.example).
 
-2. Start the PostgreSQL container with Docker:
+2. Export [`.env`](.env) variables :
+   ```bash
+   export $(grep -v '^#' .env | xargs)
+   ```
+
+3. Start the PostgreSQL container with Docker:
    ```bash
    docker compose up -d postgres
    ```
 
-3. Check that the `pgvector_container` container is running:
+4. Check that the `pgvector_container` container is running:
    ```bash
    docker ps
    ```

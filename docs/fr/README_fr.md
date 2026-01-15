@@ -36,18 +36,20 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
     ./scripts/containers_deployment.sh
     ```
 
-2.  Exportez les variables du fichier [`.env`](.env) :
+2.  Configurez les variables d'environnement dans un fichier [`.env`](.env) en vous basant sur l'exemple contenu dans [`.env.example`](.env.example).
+
+3.  Exportez les variables du fichier [`.env`](.env) :
     ```bash
     export $(grep -v '^#' .env | xargs)
     ```
 
-3. Assurez-vous de supprimer le volume PostgreSQL (PgVector) :
+4. Assurez-vous de supprimer le volume PostgreSQL (PgVector) :
     ```bash
     docker compose down -v
     ```
     > ⚠️ Cette opération supprimera tous les volumes !
 
-4.  Utilisez l'API d'Airflow pour obtenir la variable `JWT_TOKEN` :
+5.  Utilisez l'API d'Airflow pour obtenir la variable `JWT_TOKEN` :
     ```bash
     curl -X 'POST' \
     'http://localhost:8080/auth/token' \
@@ -55,7 +57,7 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
     -d "{\"username\": \"${_AIRFLOW_WWW_USER_USERNAME}\", \"password\": \"${_AIRFLOW_WWW_USER_PASSWORD}\"}"
     ```
 
-5.  Définissez la variable `JWT_TOKEN` dans le fichier [`.env`](.env) avec le `access_token` obtenu.
+6.  Définissez la variable `JWT_TOKEN` dans le fichier [`.env`](.env) avec le `access_token` obtenu.
 
 #### Optionnel : Configurer les notifications Tchap
 
@@ -120,12 +122,17 @@ Chaque jeu de données a son propre DAG et le DAG [`FULL_PIPELINE`](./airflow_co
 
 1.  Configurez les variables d'environnement dans un fichier [`.env`](.env) en vous basant sur l'exemple contenu dans [`.env.example`](.env.example).
 
-2.  Démarrez le conteneur PostgreSQL avec Docker :
+2.  Exportez les variables du fichier [`.env`](.env) :
+    ```bash
+    export $(grep -v '^#' .env | xargs)
+    ```
+
+3.  Démarrez le conteneur PostgreSQL avec Docker :
     ```bash
     docker compose up -d postgres
     ```
 
-3.  Vérifiez que le conteneur `pgvector_container` est en cours d'exécution :
+4.  Vérifiez que le conteneur `pgvector_container` est en cours d'exécution :
     ```bash
     docker ps
     ```
