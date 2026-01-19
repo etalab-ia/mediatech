@@ -594,7 +594,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
         table_name = "legi"
         try:
             status = root.find(".//ETAT").text
-            if status in ["VIGUEUR", "ABROGE_DIFF", "MODIFIE"]:
+            if status in ["VIGUEUR", "ABROGE_DIFF"]:
                 cid = root.find(".//ID").text  # doc_id
                 nature = root.find(".//NATURE").text
                 title = (
@@ -734,7 +734,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
         try:
             status = root.find(".//ETAT_JURIDIQUE").text
 
-            if status in ["VIGUEUR", "MODIFIE"]:
+            if status in ["VIGUEUR"]:
                 cid = root.find(".//ID").text
                 nature = root.find(".//NATURE").text
                 nature_delib = root.find(".//NATURE_DELIB").text
