@@ -767,7 +767,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                 chunks = make_chunks(
                     text=text_content,
                     chunk_size=1500,
-                    chunk_overlap=200,
+                    chunk_overlap=0,
                     length_function="len",
                 )
                 data_to_insert = []
@@ -851,7 +851,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
             chunks = make_chunks(
                 text=text_content,
                 chunk_size=1500,
-                chunk_overlap=200,
+                chunk_overlap=0,
                 length_function="len",
             )
             data_to_insert = []
@@ -930,7 +930,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
 
             # Creating chunks for explanatory memorandum
             chunks = make_chunks(
-                text=exp_memo, chunk_size=8000, chunk_overlap=400, length_function="len"
+                text=exp_memo, chunk_size=8000, chunk_overlap=0, length_function="len"
             )
             data_to_insert = []
             if not chunks:
@@ -1145,7 +1145,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                     chunks = make_chunks(
                         text=chunk_text,
                         chunk_size=8000,
-                        chunk_overlap=400,
+                        chunk_overlap=0,
                         length_function="len",
                     )
 
@@ -1212,7 +1212,7 @@ def _process_dila_xml_content(root: ET.Element, file_name: str, model: str):
                     chunks = make_chunks(
                         text=chunks,
                         chunk_size=8000,
-                        chunk_overlap=400,
+                        chunk_overlap=0,
                         length_function="len",
                     )
 
