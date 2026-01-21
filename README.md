@@ -239,7 +239,7 @@ This script will:
 - **[`.github/`](.github/)**: Contains GitHub Actions workflows for Continuous Integration and Continuous Deployment (CI/CD), automating testing and deployment processes.
 - **[`download_and_processing/`](download_and_processing/)**: Contains scripts to download and extract files.
 - **[`database/`](database/)**: Contains scripts to manage the database (table creation, data insertion).
- - **[`docs/`](/docs/)**: Contains various documentation resources and tutorials.
+- **[`docs/`](/docs/)**: Contains various documentation resources and tutorials.
   - **[`docs/hugging_face_rag_tutorial.ipynb`](/docs/hugging_face_rag_tutorial.ipynb)**: # RAG Tutorial: How to load MediaTech's datasets from Hugging Face and use them in a RAG pipeline ?
   - **[`docs/reconstruct_vector_database.ipynb`](/docs/reconstruct_vector_database.ipynb)**: Tutorial: How to reconstruct a dataset without chunking and embedding from MediaTech parquet files uploaded to Hugging Face?
   - **[`docs/fr/`](/docs/fr/)**: Contains all documentation resources and tutorials translated into French.
