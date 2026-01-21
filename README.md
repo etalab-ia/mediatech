@@ -10,7 +10,7 @@
 This project processes public data made available by various administrations in order to facilitate access to vectorized and ready-to-use public data for AI applications in the public sector.
 It includes scripts for downloading, processing, embedding, and inserting this data into a PostgreSQL database, and facilitates its export via various means.
 
-## 💡 Tutorial
+## 💡 Get Started
 
 ### 𖣘 Method 1 : Airflow
 
@@ -239,6 +239,10 @@ This script will:
 - **[`.github/`](.github/)**: Contains GitHub Actions workflows for Continuous Integration and Continuous Deployment (CI/CD), automating testing and deployment processes.
 - **[`download_and_processing/`](download_and_processing/)**: Contains scripts to download and extract files.
 - **[`database/`](database/)**: Contains scripts to manage the database (table creation, data insertion).
+ - **[`docs/`](/docs/)**: Contains various documentation resources and tutorials.
+  - **[`docs/hugging_face_rag_tutorial.ipynb`](/docs/hugging_face_rag_tutorial.ipynb)**: # RAG Tutorial: How to load MediaTech's datasets from Hugging Face and use them in a RAG pipeline ?
+  - **[`docs/reconstruct_vector_database.ipynb`](/docs/reconstruct_vector_database.ipynb)**: Tutorial: How to reconstruct a dataset without chunking and embedding from MediaTech parquet files uploaded to Hugging Face?
+  - **[`docs/fr/`](/docs/fr/)**: Contains all documentation resources and tutorials translated into French.
 - **[`utils/`](utils/)**: Contains utility functions shared across modules.
 - **[`config/`](config/)**: Contains project configuration scripts.
 - **[`logs/`](logs/)**: Contains log files to track [scripts](scripts/) execution.
@@ -251,6 +255,7 @@ This script will:
   - **[`scripts/containers_deployment.sh`](scripts/containers_deployment.sh)**:  Manages the application's lifecycle by building, initializing, and deploying the Docker containers as defined in [docker-compose.yml](docker-compose.yml). It must be executed after each update of the Mediatech CLI or other script not shared with the Airflow container, as defined in [docker-compose.yml](docker-compose.yml).
   - **[`scripts/check_running_dags.sh`](scripts/check_running_dags.sh)**: Checks the Airflow API to see if any data pipelines (DAGs) are currently running, used to safely lock the deployment process.
   - **[`scripts/delete_old_files.sh`](scripts/delete_old_files.sh)**: Shell script to automatically delete old files  from severals folders such as [logs/](logs/), [airflow_config/logs](airflow_config/logs) and [backups/](backups/). It keeps files from the last X days and deletes older ones. This script can be run manually or scheduled via cron to keep the folders clean.
+  - **[`scripts/manage_checkpoint.sh`](scripts/manage_checkpoint.sh)** : Script shell permettant de gérer les différents fichiers de points de contrôle pour le traitement des fichiers. 
   - **[`scripts/write_tchap_message.sh`](scripts/write_tchap_message.sh)**: Sends a formatted message to a specified Tchap room. It takes the message content as an argument and uses environment variables for authentication and destination.
 - **[`airflow_config`](airflow_config/)**: Contains all files related to Apache Airflow, including DAG definitions (`dags/`), configuration (`config/`), logs (`logs/`), and plugins (`plugins/`). This is where the data orchestration pipelines are defined and managed.
 

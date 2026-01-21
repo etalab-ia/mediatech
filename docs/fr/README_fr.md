@@ -9,7 +9,7 @@
 Ce projet traite les données publiques mises à disposition par divers administrations afin de faciliter l'accès à des données publiques vectorisées et prêtes à l'emploi pour des usages IA dans la fonction publique.
 Il inclut des scripts pour télécharger, traiter, embedder, insérer ces données dans une base PostgreSQL et faciliter leur exportation via divers moyens.
 
-## 💡 Tutoriel
+## 💡 Démarrer
 
 ### 𖣘 Méthode 1 : Airflow
 
@@ -237,6 +237,10 @@ Ce script va :
 - **[`.github/`](.github/)** : Contient les workflows GitHub Actions pour l'Intégration Continue et le Déploiement Continu (CI/CD), automatisant les tests et les processus de déploiement.
 - **[`download_and_processing/`](download_and_processing/)** : Contient les scripts pour télécharger et extraire les fichiers.
 - **[`database/`](database/)** : Contient les scripts pour gérer la base de données (création de tables, insertion de données).
+- **[`docs/`](/docs/)** : Contient les différentes ressources documentaires et tutoriels.
+  - **[`docs/hugging_face_rag_tutorial.ipynb`](/docs/hugging_face_rag_tutorial.ipynb)** : Tutoriel : Comment charger les jeux de données de MediaTech depuis Hugging Face et les utiliser dans un système RAG ?
+  - **[`docs/reconstruct_vector_database.ipynb`](/docs/reconstruct_vector_database.ipynb)** : Tutoriel : Comment reconstituer un jeu de donnée sans chunking et sans embedding à partir des fichiers parquets de MediaTech téléversés sur Hugging Face ?
+  - **[`docs/fr/`](/docs/fr/)** : Contient toutes les ressources documentaires et tutoriels traduits en langue française.
 - **[`utils/`](utils/)** : Contient des fonctions utilitaires partagées entre les différents modules.
 - **[`config/`](config/)** : Contient les scripts de configuration du projet.
 - **[`logs/`](logs/)** : Contient les fichiers journaux pour suivre l'exécution des [scripts](scripts/).
@@ -249,6 +253,7 @@ Ce script va :
   - **[`scripts/containers_deployment.sh`](scripts/containers_deployment.sh)**: Gère le cycle de vie de l'application en construisant, initialisant et déployant les conteneurs Docker tels que définis dans [docker-compose.yml](docker-compose.yml). Il doit être exécuté après chaque mise à jour du CLI Mediatech ou d'un autre script non partagé avec le conteneur Airflow.
   - **[`scripts/check_running_dags.sh`](scripts/check_running_dags.sh)**: Vérifie l'API d'Airflow pour voir si des pipelines de données (DAGs) sont en cours d'exécution, utilisé pour verrouiller en toute sécurité le processus de déploiement.
   - **[`scripts/delete_old_files.sh`](scripts/delete_old_files.sh)** : Script shell permettant de supprimer automatiquement les anciens fichiers de différents dossiers tels que [logs/](logs/), [airflow_config/logs](airflow_config/logs) et [backups/](backups/). Il conserve les fichiers des X derniers jours et supprime les plus anciens. Ce script peut être exécuté manuellement ou programmé via cron pour garder les dossiers propres.
+  - **[`scripts/manage_checkpoint.sh`](scripts/manage_checkpoint.sh)** : Script shell permettant de gérer les différents fichiers de points de contrôle pour le traitement des fichiers. 
   - **[`scripts/write_tchap_message.sh`](../scripts/write_tchap_message.sh)**: Envoie un message formaté à un salon Tchap spécifié. Il prend le contenu du message en argument et utilise des variables d'environnement pour l'authentification et la destination.
 - **[`airflow_config`](airflow_config/)**: Contient tous les fichiers relatifs à Apache Airflow, y compris les définitions de DAGs (`dags/`), la configuration (`config/`), les logs (`logs/`) et les plugins (`plugins/`). C'est ici que les pipelines d'orchestration de données sont définis et gérés.
 
