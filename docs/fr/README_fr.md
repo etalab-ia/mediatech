@@ -59,6 +59,16 @@ Il inclut des scripts pour télécharger, traiter, embedder, insérer ces donné
 
 6.  Définissez la variable `JWT_TOKEN` dans le fichier [`.env`](.env) avec le `access_token` obtenu.
 
+7. Définissez la variable Airflow `full_pipeline_schedule` pour configurer la planification d'exécution du DAG [full_pipeline](full_pipeline.py) de l'une des façons suivantes :
+
+- En exécutant la commande bash :
+  ```bash
+  docker exec -it airflow-scheduler airflow variables set full_pipeline_schedule "0 19 * * 5"
+  ```
+  > L'expression cron `0 19 * * 5` programme le DAG tous les vendredis à 19:00. Remplacez l'expression cron par la planification souhaitée ou `None`.
+
+- Depuis l'interface Airflow : `Admin` > `Variable` > `+ Add Variable`
+
 #### Optionnel : Configurer les notifications Tchap
 
 Pour recevoir des notifications en temps réel sur l'exécution des DAGs (démarrage, succès, échec) dans un salon Tchap, vous devez configurer une connexion Apprise dans Airflow.

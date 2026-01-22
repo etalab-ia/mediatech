@@ -1420,12 +1420,51 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
         conn.commit()
         logger.debug("Data inserted into PostgreSQL database")
     except Exception as e:
-        logger.error(f"Error inserting data into PostgreSQL: {e}\n{data}")
+        logger.error(f"Error inserting data into PostgreSQL: {e}\n{str(data)[:200]}...")
         raise e
     finally:
         if conn:
             conn.close()
             logger.debug("PostgreSQL connection closed")
+
+
+def remove_data(table_name: str, column: str, value: str):
+    """
+    Remove data from a PostgreSQL table based on a specific column and value.
+
+    Args:
+        table_name (str): Name of the PostgreSQL table to remove data from.
+        column (str): Column name to filter the rows to be removed.
+        value (str): Value in the specified column to match for removal.
+
+    Raises:
+        Exception: Any error encountered during database operations is logged.
+    """
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        cursor = conn.cursor()
+
+        delete_query = f"DELETE FROM {table_name.upper()} WHERE {column} = %s"
+        cursor.execute(delete_query, (value,))
+        conn.commit()
+        logger.info(
+            f"Data removed from {table_name.upper()} table where {column} = {value} (if exists)"
+        )
+    except Exception as e:
+        logger.error(f"Error removing data from PostgreSQL: {e}")
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("PostgreSQL connection closed")
+
+
+### LEGACY FUNCTIONS ###
 
 
 def postgres_to_qdrant(
@@ -1535,42 +1574,6 @@ def postgres_to_qdrant(
     except Exception as e:
         logger.error(f"Error inserting data into Qdrant: {e}")
         raise e
-    finally:
-        if conn:
-            conn.close()
-            logger.debug("PostgreSQL connection closed")
-
-
-def remove_data(table_name: str, column: str, value: str):
-    """
-    Remove data from a PostgreSQL table based on a specific column and value.
-
-    Args:
-        table_name (str): Name of the PostgreSQL table to remove data from.
-        column (str): Column name to filter the rows to be removed.
-        value (str): Value in the specified column to match for removal.
-
-    Raises:
-        Exception: Any error encountered during database operations is logged.
-    """
-    try:
-        conn = psycopg2.connect(
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-        )
-        cursor = conn.cursor()
-
-        delete_query = f"DELETE FROM {table_name.upper()} WHERE {column} = %s"
-        cursor.execute(delete_query, (value,))
-        conn.commit()
-        logger.info(
-            f"Data removed from {table_name.upper()} table where {column} = {value} (if exists)"
-        )
-    except Exception as e:
-        logger.error(f"Error removing data from PostgreSQL: {e}")
     finally:
         if conn:
             conn.close()

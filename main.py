@@ -160,7 +160,7 @@ def main():
 
                 if source in SOURCE_MAP:
                     logger.info(f"Processing data from source: {source}")
-                    process_data(table_name=source, model=model)
+                    process_data(table_name=source, model=model, streaming=True)
                 else:
                     logger.error(f"Unknown source: {source}")
                     return 1

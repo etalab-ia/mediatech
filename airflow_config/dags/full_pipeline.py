@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sensors.external_task import ExternalTaskSensor
 
@@ -10,6 +11,9 @@ default_args = {
     "retries": 3,
     "retry_delay": timedelta(minutes=10),
 }
+
+# Schedule based on Airflow's Variable, can be None for manual runs
+PIPELINE_SCHEDULE = Variable.get("full_pipeline_schedule", default_var=None)
 
 
 def create_trigger(dag_id: str, execution_date: str) -> TriggerDagRunOperator:
@@ -30,7 +34,7 @@ def create_wait_sensor(dag_id: str) -> ExternalTaskSensor:
         external_dag_id=dag_id,
         external_task_id="upload_dataset",  # Last task of each DAG
         mode="reschedule",  # Reschedule mode to avoid blocking the scheduler
-        timeout=14 * 24 * 60 * 60,  # Wait up to 14 days, after which the task will fail
+        timeout=21 * 24 * 60 * 60,  # Wait up to 21 days, after which the task will fail
         poke_interval=120,  # Check every 2 minutes if the task has completed
         allowed_states=["success"],
         failed_states=["failed", "skipped", "upstream_failed"],
@@ -40,7 +44,7 @@ def create_wait_sensor(dag_id: str) -> ExternalTaskSensor:
 with DAG(
     "FULL_PIPELINE",
     default_args=default_args,
-    schedule=None,  # e.g. modify it to "0 19 * * 5" for weekly runs every Friday at 7 PM
+    schedule=PIPELINE_SCHEDULE,
     catchup=False,
     max_active_runs=1,
     description="MediaTech full data processing pipeline",
@@ -53,12 +57,12 @@ with DAG(
         "CNIL",
         "CONSTIT",
         "DOLE",
-        "LEGI",
         "STATE_ADMINISTRATIONS_DIRECTORY",
         "LOCAL_ADMINISTRATIONS_DIRECTORY",
         "SERVICE_PUBLIC",
         "TRAVAIL_EMPLOI",
         "DATA_GOUV_DATASETS_CATALOG",
+        "LEGI",
     ]
 
     # Create triggers and wait sensors

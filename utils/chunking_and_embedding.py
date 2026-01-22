@@ -180,11 +180,11 @@ def generate_embeddings_with_retry(
         except Exception as e:
             if attempt == attempts - 1:  # If this is the last attempt
                 logger.error(
-                    f"Error generating embeddings for : {data}. Error: {e}. Maximum retries reached ({attempts}). Raising exception."
+                    f"Error generating embeddings for : {str(data)[:200]} ... Error: {e}. Maximum retries reached ({attempts}). Raising exception."
                 )
                 raise
             logger.error(
-                f"Error generating embeddings for : {data}. Error: {e}. Retrying in {time_sleep} seconds (attempt {attempt + 1}/{attempts})"
+                f"Error generating embeddings for : {str(data)[:200]} ... Error: {e}. Retrying in {time_sleep} seconds (attempt {attempt + 1}/{attempts})"
             )
             time.sleep(time_sleep)  # Waiting {time_sleep} seconds before retrying
 
