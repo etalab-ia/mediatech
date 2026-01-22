@@ -266,7 +266,6 @@ def download_and_optionally_process_files(
                                 logger.info(
                                     f"Successfully downloaded and processed {table_name}"
                                 )
-                                break
                             else:
                                 logger.info(f"Successfully downloaded {data_source}")
 
