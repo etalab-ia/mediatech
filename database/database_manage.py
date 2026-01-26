@@ -631,6 +631,7 @@ def create_table_from_existing(
     Raises:
         Logs errors if any exception occurs during database operations.
     """
+    conn = None
     try:
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
@@ -1188,6 +1189,7 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
         - Performs upsert (insert or update on conflict) based on the primary key 'chunk_id'.
         - Logs an error and returns if an unknown table name is provided.
     """
+    conn = None
     try:
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
@@ -1440,6 +1442,7 @@ def remove_data(table_name: str, column: str, value: str):
     Raises:
         Exception: Any error encountered during database operations is logged.
     """
+    conn = None
     try:
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
@@ -1527,6 +1530,7 @@ def postgres_to_qdrant(
         },
     )
 
+    conn = None
     try:
         conn = psycopg2.connect(
             host=POSTGRES_HOST,

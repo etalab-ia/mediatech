@@ -1,6 +1,7 @@
 import gc
 import json
 import os
+import sys
 import tarfile
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -28,6 +29,9 @@ from utils import (
 )
 
 logger = get_logger(__name__)
+
+# Setting a higher recursion limit for processing large files
+sys.setrecursionlimit(limit=10000)
 
 
 def _process_data_gouv_content(
