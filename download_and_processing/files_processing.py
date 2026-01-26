@@ -31,7 +31,7 @@ from utils import (
 logger = get_logger(__name__)
 
 # Setting a higher recursion limit for processing large files
-sys.setrecursionlimit(limit=10000)
+sys.setrecursionlimit(10000)
 
 
 def _process_data_gouv_content(
