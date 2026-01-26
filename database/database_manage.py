@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import uuid
@@ -6,6 +7,7 @@ from contextlib import contextmanager
 import duckdb
 import psycopg2
 from fastembed import SparseTextEmbedding
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from qdrant_client import QdrantClient, models
 from tqdm import tqdm
@@ -28,6 +30,63 @@ from utils import (
 )
 
 logger = get_logger(__name__)
+
+# Global connection pool (lazy initialization)
+_connection_pool = None
+
+
+def _get_pool():
+    """Get or create the connection pool (lazy initialization)."""
+    global _connection_pool
+    if _connection_pool is None:
+        _connection_pool = pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        logger.info("PostgreSQL connection pool initialized")
+    return _connection_pool
+
+
+@contextmanager
+def get_connection():
+    """
+    Context manager to get a connection from the pool.
+    Automatically returns the connection to the pool when done.
+
+    Usage:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(...)
+            conn.commit()
+    """
+    conn = None
+    try:
+        conn = _get_pool().getconn()
+        yield conn
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            _get_pool().putconn(conn)
+
+
+def close_connection_pool():
+    """Close all connections in the pool."""
+    global _connection_pool
+    if _connection_pool is not None:
+        _connection_pool.closeall()
+        _connection_pool = None
+        logger.info("PostgreSQL connection pool closed")
+
+
+atexit.register(close_connection_pool)
 
 
 def create_all_tables(model="BAAI/bge-m3", delete_existing: bool = False):
@@ -1189,15 +1248,7 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
         - Performs upsert (insert or update on conflict) based on the primary key 'chunk_id'.
         - Logs an error and returns if an unknown table name is provided.
     """
-    conn = None
-    try:
-        conn = psycopg2.connect(
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-        )
+    with get_connection() as conn:
         cursor = conn.cursor()
 
         model_name = format_model_name(model)
@@ -1415,19 +1466,16 @@ def insert_data(data: list, table_name: str, model="BAAI/bge-m3"):
             """
         else:
             logger.error(f"Unknown table name: {table_name}")
-            conn.commit()
-            conn.close()
             return
-        cursor.executemany(insert_query, data)
-        conn.commit()
-        logger.debug("Data inserted into PostgreSQL database")
-    except Exception as e:
-        logger.error(f"Error inserting data into PostgreSQL: {e}\n{str(data)[:200]}...")
-        raise e
-    finally:
-        if conn:
-            conn.close()
-            logger.debug("PostgreSQL connection closed")
+        try:
+            cursor.executemany(insert_query, data)
+            conn.commit()
+            logger.debug("Data inserted into PostgreSQL database")
+        except Exception as e:
+            logger.error(
+                f"Error inserting data into PostgreSQL: {e}\n{str(data)[:200]}..."
+            )
+            raise e
 
 
 def remove_data(table_name: str, column: str, value: str):
@@ -1442,29 +1490,17 @@ def remove_data(table_name: str, column: str, value: str):
     Raises:
         Exception: Any error encountered during database operations is logged.
     """
-    conn = None
     try:
-        conn = psycopg2.connect(
-            host=POSTGRES_HOST,
-            port=POSTGRES_PORT,
-            dbname=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD,
-        )
-        cursor = conn.cursor()
-
-        delete_query = f"DELETE FROM {table_name.upper()} WHERE {column} = %s"
-        cursor.execute(delete_query, (value,))
-        conn.commit()
-        logger.info(
-            f"Data removed from {table_name.upper()} table where {column} = {value} (if exists)"
-        )
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            delete_query = f"DELETE FROM {table_name.upper()} WHERE {column} = %s"
+            cursor.execute(delete_query, (value,))
+            conn.commit()
+            logger.info(
+                f"Data removed from {table_name.upper()} table where {column} = {value} (if exists)"
+            )
     except Exception as e:
         logger.error(f"Error removing data from PostgreSQL: {e}")
-    finally:
-        if conn:
-            conn.close()
-            logger.debug("PostgreSQL connection closed")
 
 
 ### LEGACY FUNCTIONS ###
